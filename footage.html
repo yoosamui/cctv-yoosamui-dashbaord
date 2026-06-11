@@ -108,12 +108,20 @@
         }
 
         .thumb-cell {
-            width: 72px;
+            width: 148px;
+        }
+
+        .thumb-card {
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            gap: 6px;
+            width: 148px;
         }
 
         .thumb {
-            width: 64px;
-            height: 64px;
+            width: 148px;
+            height: 100px;
             object-fit: cover;
             border-radius: 10px;
             border: 1px solid rgba(148, 163, 184, 0.18);
@@ -121,8 +129,8 @@
         }
 
         .thumb-icon {
-            width: 64px;
-            height: 64px;
+            width: 148px;
+            height: 100px;
             display: grid;
             place-items: center;
             border-radius: 10px;
@@ -131,6 +139,13 @@
             color: #e0f2fe;
             font-size: 1.35rem;
             font-weight: 700;
+        }
+
+        .thumb-caption {
+            font-size: 0.85rem;
+            color: #dbeafe;
+            text-align: center;
+            word-break: break-word;
         }
 
         th,
@@ -186,7 +201,7 @@
 
         <section class="card">
             <div class="search-row">
-                <input id="query" class="search-input" type="text" placeholder="Example: --since 2026-06-12 14:30" />
+                <input id="query" class="search-input" type="text" placeholder="Example: 2026-06-12 14:30 or today" />
                 <select id="typeFilter" class="filter-select" aria-label="Media type filter">
                     <option value="all">All media</option>
                     <option value="video">Videos only</option>
@@ -194,8 +209,9 @@
                 </select>
                 <button id="searchBtn" class="btn" type="button">Search</button>
             </div>
-            <p class="hint">Accepted forms: <strong>--since [date] [time]</strong>, <strong>--since [time]</strong>, or
-                <strong>--since [date]</strong>.
+            <p class="hint">Accepted forms: <strong>[date] [time]</strong>, <strong>[time]</strong>,
+                <strong>[date]</strong>, or
+                <strong>today</strong> for the current day.
             </p>
             <div id="status" class="status">Ready to scan camera folders.</div>
             <div id="results" style="margin-top: 14px; overflow-x:auto;"></div>
@@ -210,6 +226,11 @@
         const statusBox = document.getElementById('status');
 
         typeFilter.value = 'all';
+
+        function previewUrlFor(path) {
+            const base = window.location.port === '8880' ? '/api/preview' : 'http://127.0.0.1:8881/api/preview';
+            return `${base}?path=${encodeURIComponent(path)}`;
+        }
 
         function renderTable(items) {
             const selectedType = (typeFilter.value || 'all').toLowerCase();
@@ -230,7 +251,7 @@
                     <td>${escapeHtml(item.kind || '')}</td>
                     <td>${escapeHtml(item.modified || '')}</td>
                     <td>${escapeHtml(item.size || '')}</td>
-                    <td><a href="${escapeHtml(item.path || '')}" target="_blank" rel="noreferrer">Open</a></td>
+                    <td><a href="${escapeHtml(previewUrlFor(item.path || ''))}" target="_blank" rel="noreferrer">Open</a></td>
                 </tr>
             `).join('');
 
@@ -256,28 +277,33 @@
 
         function renderThumb(item) {
             const kind = (item.kind || '').toLowerCase();
-            if (kind === 'image') {
-                return `<img class="thumb preview-thumb" data-path="${escapeHtml(item.path || '')}" src="" alt="${escapeHtml(item.name || 'Image preview')}" />`;
-            }
-            return `<div class="thumb-icon" aria-label="Video preview">▶</div>`;
+            const cameraLabel = escapeHtml(item.camera || 'Unknown camera');
+            const preview = kind === 'image'
+                ? `<img class="thumb preview-thumb" data-path="${escapeHtml(item.path || '')}" src="" alt="${escapeHtml(item.name || 'Image preview')}" />`
+                : `<div class="thumb-icon" aria-label="Video preview">▶</div>`;
+            return `<figure class="thumb-card">${preview}<figcaption class="thumb-caption">${cameraLabel}</figcaption></figure>`;
         }
 
         async function hydratePreviewImages() {
-            const previewBase = window.location.port === '8880' ? '/api/preview' : 'http://127.0.0.1:8881/api/preview';
             const images = document.querySelectorAll('.preview-thumb');
 
             for (const image of images) {
                 const path = image.getAttribute('data-path');
                 if (!path) continue;
 
+                const previousUrl = image.dataset.objectUrl;
+                if (previousUrl) {
+                    URL.revokeObjectURL(previousUrl);
+                }
+
                 try {
-                    const response = await fetch(`${previewBase}?path=${encodeURIComponent(path)}`);
-                    if (!response.ok) throw new Error('Preview failed');
+                    const response = await fetch(previewUrlFor(path));
+                    if (!response.ok) throw new Error(`Preview failed (${response.status})`);
                     const blob = await response.blob();
-                    image.src = URL.createObjectURL(blob);
-                    image.onerror = () => {
-                        image.alt = 'Preview unavailable';
-                    };
+                    const objectUrl = URL.createObjectURL(blob);
+                    image.dataset.objectUrl = objectUrl;
+                    image.src = objectUrl;
+                    image.alt = image.alt || 'Image preview';
                 } catch (error) {
                     image.alt = 'Preview unavailable';
                     image.title = 'Preview unavailable';
@@ -297,7 +323,7 @@
         async function searchFootage() {
             const query = queryInput.value.trim();
             if (!query) {
-                statusBox.textContent = 'Enter a search term or --since filter.';
+                statusBox.textContent = 'Enter a search term, date/time filter, or today.';
                 return;
             }
 

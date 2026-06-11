@@ -3,7 +3,7 @@ import json
 import os
 import re
 import sys
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
 from urllib.parse import parse_qs, urlparse
@@ -21,6 +21,11 @@ MIME_TYPES = {
     ".gif": "image/gif",
     ".bmp": "image/bmp",
     ".webp": "image/webp",
+    ".mp4": "video/mp4",
+    ".mov": "video/quicktime",
+    ".mkv": "video/x-matroska",
+    ".avi": "video/x-msvideo",
+    ".webm": "video/webm",
 }
 
 
@@ -44,11 +49,14 @@ def file_kind(path: Path) -> str:
 
 
 def parse_since(value: str):
-    text = value.strip()
+    text = value.strip().lower()
     if not text:
         return None
 
-    # Accept --since [date] [time] or --since [time] or --since [date]
+    if text == "today":
+        return datetime.now(timezone.utc)
+
+    # Accept [date] [time], [time], or [date]
     parts = text.split()
     if len(parts) == 1:
         if re.fullmatch(r"\d{4}-\d{2}-\d{2}", parts[0]):
@@ -98,6 +106,17 @@ def filter_results(items, since_value):
     return filtered
 
 
+def filter_today(items):
+    today = datetime.now(timezone.utc).replace(hour=0, minute=0, second=0, microsecond=0)
+    tomorrow = today + timedelta(days=1)
+    filtered = []
+    for item in items:
+        modified = datetime.fromisoformat(item["modified"].replace("Z", "+00:00")).astimezone(timezone.utc)
+        if today <= modified < tomorrow:
+            filtered.append(item)
+    return filtered
+
+
 class Handler(BaseHTTPRequestHandler):
     def do_GET(self):
         parsed = urlparse(self.path)
@@ -115,22 +134,19 @@ class Handler(BaseHTTPRequestHandler):
             self.wfile.write(b"Not found")
             return
 
-        since = None
-        if "--since" in query:
-            parts = query.split()
-            try:
-                idx = parts.index("--since")
-                since_text = " ".join(parts[idx + 1:])
-                since = parse_since(since_text)
-            except Exception:
-                since = None
-
+        query_lower = query.strip().lower()
         all_items = find_files(STORAGE_ROOT)
-        filtered = filter_results(all_items, since)
 
-        if query and "--since" not in query:
-            needle = query.lower()
-            filtered = [item for item in filtered if needle in item["name"].lower() or needle in item["path"].lower()]
+        if query_lower == "today":
+            filtered = filter_today(all_items)
+            since = None
+        else:
+            since = parse_since(query)
+            filtered = filter_results(all_items, since)
+
+            if query and since is None:
+                needle = query.lower()
+                filtered = [item for item in filtered if needle in item["name"].lower() or needle in item["path"].lower()]
 
         payload = {
             "root": str(STORAGE_ROOT),
