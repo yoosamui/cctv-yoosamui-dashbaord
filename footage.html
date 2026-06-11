@@ -171,6 +171,36 @@
             font-weight: 600;
         }
 
+        .pager {
+            display: flex;
+            flex-wrap: wrap;
+            align-items: center;
+            justify-content: space-between;
+            gap: 10px;
+            margin-top: 12px;
+        }
+
+        .pager-buttons {
+            display: flex;
+            flex-wrap: wrap;
+            gap: 8px;
+        }
+
+        .pager button {
+            border: 1px solid rgba(56, 189, 248, 0.35);
+            background: rgba(56, 189, 248, 0.12);
+            color: #eff6ff;
+            border-radius: 999px;
+            padding: 8px 12px;
+            cursor: pointer;
+            font-weight: 700;
+        }
+
+        .pager button:disabled {
+            opacity: 0.45;
+            cursor: not-allowed;
+        }
+
         h1,
         h2 {
             margin-top: 0;
@@ -220,10 +250,13 @@
 
     <script>
         const apiCandidates = ['/api/footage', 'http://127.0.0.1:8881/api/footage'];
+        const PAGE_SIZE = 50;
         const queryInput = document.getElementById('query');
         const typeFilter = document.getElementById('typeFilter');
         const resultsBox = document.getElementById('results');
         const statusBox = document.getElementById('status');
+        let allItems = [];
+        let currentPage = 1;
 
         typeFilter.value = 'all';
 
@@ -238,15 +271,28 @@
                 ? items
                 : items.filter(item => (item.kind || '').toLowerCase() === selectedType);
 
-            if (!filteredItems || filteredItems.length === 0) {
+            allItems = filteredItems || [];
+            currentPage = 1;
+
+            if (!allItems.length) {
                 resultsBox.innerHTML = '<p class="muted">No footage matched this query.</p>';
                 return;
             }
 
-            const rows = filteredItems.map(item => `
+            renderPage();
+        }
+
+        function renderPage() {
+            const totalPages = Math.ceil(allItems.length / PAGE_SIZE) || 1;
+            const safePage = Math.min(currentPage, totalPages);
+            currentPage = safePage;
+
+            const start = (currentPage - 1) * PAGE_SIZE;
+            const end = start + PAGE_SIZE;
+            const pageItems = allItems.slice(start, end);
+            const rows = pageItems.map(item => `
                 <tr>
                     <td class="thumb-cell">${renderThumb(item)}</td>
-                    <td>${escapeHtml(item.camera || 'Unknown')}</td>
                     <td>${escapeHtml(item.name || '')}</td>
                     <td>${escapeHtml(item.kind || '')}</td>
                     <td>${escapeHtml(item.modified || '')}</td>
@@ -255,22 +301,49 @@
                 </tr>
             `).join('');
 
+            const pageLabel = `Page ${currentPage} of ${totalPages}`;
+            const rangeStart = start + 1;
+            const rangeEnd = Math.min(end, allItems.length);
+
             resultsBox.innerHTML = `
-                <table>
-                    <thead>
-                        <tr>
-                            <th class="thumb-cell">Preview</th>
-                            <th>Camera</th>
-                            <th>Filename</th>
-                            <th>Type</th>
-                            <th>Modified</th>
-                            <th>Size</th>
-                            <th>Open</th>
-                        </tr>
-                    </thead>
-                    <tbody>${rows}</tbody>
-                </table>
+                <div>
+                    <table>
+                        <thead>
+                            <tr>
+                                <th class="thumb-cell">Preview</th>
+                                <th>Filename</th>
+                                <th>Type</th>
+                                <th>Modified</th>
+                                <th>Size</th>
+                                <th>Open</th>
+                            </tr>
+                        </thead>
+                        <tbody>${rows}</tbody>
+                    </table>
+                    <div class="pager">
+                        <div class="muted">Showing ${rangeStart}-${rangeEnd} of ${allItems.length} items</div>
+                        <div class="pager-buttons">
+                            <button type="button" id="prevPageBtn" ${currentPage === 1 ? 'disabled' : ''}>← Prev</button>
+                            <button type="button" id="nextPageBtn" ${currentPage === totalPages ? 'disabled' : ''}>Next →</button>
+                            <button type="button" id="pageLabelBtn" disabled>${pageLabel}</button>
+                        </div>
+                    </div>
+                </div>
             `;
+
+            document.getElementById('prevPageBtn')?.addEventListener('click', () => {
+                if (currentPage > 1) {
+                    currentPage -= 1;
+                    renderPage();
+                }
+            });
+
+            document.getElementById('nextPageBtn')?.addEventListener('click', () => {
+                if (currentPage < Math.ceil(allItems.length / PAGE_SIZE)) {
+                    currentPage += 1;
+                    renderPage();
+                }
+            });
 
             hydratePreviewImages();
         }
