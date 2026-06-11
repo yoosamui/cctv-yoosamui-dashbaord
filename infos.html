@@ -1,0 +1,95 @@
+<!doctype html>
+<html lang="en">
+
+<head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Infos - CCTV Dashboard</title>
+    <style>
+        :root {
+            color-scheme: dark;
+            font-family: Arial, Helvetica, sans-serif;
+            background: #07111f;
+            color: #eff6ff;
+        }
+
+        * {
+            box-sizing: border-box;
+        }
+
+        body {
+            margin: 0;
+            min-height: 100vh;
+            background: radial-gradient(circle at top, #10253a 0%, #07111f 45%, #040b13 100%);
+        }
+
+        .page {
+            max-width: 980px;
+            margin: 0 auto;
+            padding: 32px 20px 64px;
+        }
+
+        .menu {
+            display: flex;
+            flex-wrap: wrap;
+            gap: 10px;
+            list-style: none;
+            margin: 0 0 24px;
+            padding: 0;
+        }
+
+        .menu a {
+            display: inline-block;
+            padding: 8px 12px;
+            border-radius: 999px;
+            background: rgba(148, 163, 184, 0.12);
+            border: 1px solid rgba(148, 163, 184, 0.18);
+            color: #eff6ff;
+            text-decoration: none;
+            font-weight: 600;
+        }
+
+        .card {
+            background: rgba(15, 23, 42, 0.88);
+            border: 1px solid rgba(148, 163, 184, 0.18);
+            border-radius: 18px;
+            padding: 18px;
+            box-shadow: 0 14px 30px rgba(15, 23, 42, 0.35);
+            margin-bottom: 18px;
+        }
+
+        h1,
+        h2 {
+            margin-top: 0;
+        }
+
+        p {
+            color: #dbeafe;
+            line-height: 1.6;
+        }
+    </style>
+</head>
+
+<body>
+    <main class="page">
+        <nav aria-label="Primary navigation">
+            <ul class="menu">
+                <li><a href="index.html">Home</a></li>
+                <li><a href="footage.html">Footage</a></li>
+                <li><a href="infos.html">Infos</a></li>
+            </ul>
+        </nav>
+
+        <section class="card">
+            <h1>Infos</h1>
+            <p>This page is for system details, camera status, and operational notes.</p>
+        </section>
+
+        <section class="card">
+            <h2>Example content</h2>
+            <p>Show streaming status, device health, firmware notes, or contact information here.</p>
+        </section>
+    </main>
+</body>
+
+</html>

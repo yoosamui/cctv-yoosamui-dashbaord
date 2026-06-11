@@ -1,0 +1,254 @@
+<!doctype html>
+<html lang="en">
+
+<head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Footage - CCTV Dashboard</title>
+    <style>
+        :root {
+            color-scheme: dark;
+            font-family: Arial, Helvetica, sans-serif;
+            background: #07111f;
+            color: #eff6ff;
+        }
+
+        * {
+            box-sizing: border-box;
+        }
+
+        body {
+            margin: 0;
+            min-height: 100vh;
+            background: radial-gradient(circle at top, #10253a 0%, #07111f 45%, #040b13 100%);
+        }
+
+        .page {
+            max-width: 980px;
+            margin: 0 auto;
+            padding: 32px 20px 64px;
+        }
+
+        .menu {
+            display: flex;
+            flex-wrap: wrap;
+            gap: 10px;
+            list-style: none;
+            margin: 0 0 24px;
+            padding: 0;
+        }
+
+        .menu a {
+            display: inline-block;
+            padding: 8px 12px;
+            border-radius: 999px;
+            background: rgba(148, 163, 184, 0.12);
+            border: 1px solid rgba(148, 163, 184, 0.18);
+            color: #eff6ff;
+            text-decoration: none;
+            font-weight: 600;
+        }
+
+        .card {
+            background: rgba(15, 23, 42, 0.88);
+            border: 1px solid rgba(148, 163, 184, 0.18);
+            border-radius: 18px;
+            padding: 18px;
+            box-shadow: 0 14px 30px rgba(15, 23, 42, 0.35);
+            margin-bottom: 18px;
+        }
+
+        .search-row {
+            display: flex;
+            flex-wrap: wrap;
+            gap: 10px;
+            margin-bottom: 14px;
+        }
+
+        .search-input {
+            flex: 1 1 320px;
+            padding: 10px 12px;
+            border-radius: 10px;
+            border: 1px solid rgba(148, 163, 184, 0.25);
+            background: rgba(15, 23, 42, 0.95);
+            color: #eff6ff;
+        }
+
+        .btn {
+            border: 1px solid rgba(56, 189, 248, 0.35);
+            background: rgba(56, 189, 248, 0.14);
+            color: #eff6ff;
+            border-radius: 10px;
+            padding: 10px 14px;
+            cursor: pointer;
+            font-weight: 700;
+        }
+
+        .hint {
+            color: #bfdbfe;
+            font-size: 0.95rem;
+            margin-top: -6px;
+            margin-bottom: 14px;
+        }
+
+        table {
+            width: 100%;
+            border-collapse: collapse;
+            overflow: hidden;
+            border-radius: 12px;
+            background: rgba(15, 23, 42, 0.92);
+        }
+
+        th,
+        td {
+            padding: 10px 12px;
+            border-bottom: 1px solid rgba(148, 163, 184, 0.14);
+            text-align: left;
+            vertical-align: top;
+            font-size: 0.95rem;
+        }
+
+        th {
+            color: #bae6fd;
+            background: rgba(30, 41, 59, 0.95);
+        }
+
+        .muted {
+            color: #bfdbfe;
+        }
+
+        .status {
+            color: #bbf7d0;
+            font-weight: 600;
+        }
+
+        h1,
+        h2 {
+            margin-top: 0;
+        }
+
+        p {
+            color: #dbeafe;
+            line-height: 1.6;
+        }
+    </style>
+</head>
+
+<body>
+    <main class="page">
+        <nav aria-label="Primary navigation">
+            <ul class="menu">
+                <li><a href="index.html">Home</a></li>
+                <li><a href="footage.html">Footage</a></li>
+                <li><a href="infos.html">Infos</a></li>
+            </ul>
+        </nav>
+
+        <section class="card">
+            <h1>Footage</h1>
+            <p>Search the stored camera files in <strong>/media/pi/share/cameras/cctv-storage</strong> using the syntax
+                below.</p>
+        </section>
+
+        <section class="card">
+            <div class="search-row">
+                <input id="query" class="search-input" type="text" placeholder="Example: --since 2026-06-12 14:30" />
+                <button id="searchBtn" class="btn" type="button">Search</button>
+            </div>
+            <p class="hint">Accepted forms: <strong>--since [date] [time]</strong>, <strong>--since [time]</strong>, or
+                <strong>--since [date]</strong>.</p>
+            <div id="status" class="status">Ready to scan camera folders.</div>
+            <div id="results" style="margin-top: 14px; overflow-x:auto;"></div>
+        </section>
+    </main>
+
+    <script>
+        const apiCandidates = ['/api/footage', 'http://127.0.0.1:8881/api/footage'];
+        const queryInput = document.getElementById('query');
+        const resultsBox = document.getElementById('results');
+        const statusBox = document.getElementById('status');
+
+        function renderTable(items) {
+            if (!items || items.length === 0) {
+                resultsBox.innerHTML = '<p class="muted">No footage matched this query.</p>';
+                return;
+            }
+
+            const rows = items.map(item => `
+                <tr>
+                    <td>${escapeHtml(item.camera || 'Unknown')}</td>
+                    <td>${escapeHtml(item.name || '')}</td>
+                    <td>${escapeHtml(item.kind || '')}</td>
+                    <td>${escapeHtml(item.modified || '')}</td>
+                    <td>${escapeHtml(item.size || '')}</td>
+                    <td><a href="file://${escapeHtml(item.path || '')}" target="_blank" rel="noreferrer">Open</a></td>
+                </tr>
+            `).join('');
+
+            resultsBox.innerHTML = `
+                <table>
+                    <thead>
+                        <tr>
+                            <th>Camera</th>
+                            <th>Filename</th>
+                            <th>Type</th>
+                            <th>Modified</th>
+                            <th>Size</th>
+                            <th>Open</th>
+                        </tr>
+                    </thead>
+                    <tbody>${rows}</tbody>
+                </table>
+            `;
+        }
+
+        function escapeHtml(value) {
+            return String(value)
+                .replaceAll('&', '&amp;')
+                .replaceAll('<', '&lt;')
+                .replaceAll('>', '&gt;')
+                .replaceAll('"', '&quot;')
+                .replaceAll("'", '&#39;');
+        }
+
+        async function searchFootage() {
+            const query = queryInput.value.trim();
+            if (!query) {
+                statusBox.textContent = 'Enter a search term or --since filter.';
+                return;
+            }
+
+            statusBox.textContent = 'Searching camera folders…';
+            resultsBox.innerHTML = '';
+
+            let lastError = null;
+
+            for (const apiBase of apiCandidates) {
+                try {
+                    const response = await fetch(`${apiBase}?query=${encodeURIComponent(query)}`);
+                    if (!response.ok) {
+                        throw new Error(`HTTP ${response.status}`);
+                    }
+                    const data = await response.json();
+                    statusBox.textContent = `Found ${data.count} result(s) under ${data.root}.`;
+                    renderTable(data.items || []);
+                    return;
+                } catch (error) {
+                    lastError = error;
+                }
+            }
+
+            statusBox.textContent = 'Search failed. Start the API server with: python3 scripts/footage_api.py';
+            resultsBox.innerHTML = '<p class="muted">Unable to reach the footage API.</p>';
+        }
+
+        document.getElementById('searchBtn').addEventListener('click', searchFootage);
+        queryInput.addEventListener('keydown', (event) => {
+            if (event.key === 'Enter') {
+                searchFootage();
+            }
+        });
+    </script>
+</body>
+
+</html>
