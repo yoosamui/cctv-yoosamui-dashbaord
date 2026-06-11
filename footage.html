@@ -107,6 +107,32 @@
             background: rgba(15, 23, 42, 0.92);
         }
 
+        .thumb-cell {
+            width: 72px;
+        }
+
+        .thumb {
+            width: 64px;
+            height: 64px;
+            object-fit: cover;
+            border-radius: 10px;
+            border: 1px solid rgba(148, 163, 184, 0.18);
+            background: rgba(30, 41, 59, 0.95);
+        }
+
+        .thumb-icon {
+            width: 64px;
+            height: 64px;
+            display: grid;
+            place-items: center;
+            border-radius: 10px;
+            border: 1px solid rgba(148, 163, 184, 0.18);
+            background: linear-gradient(135deg, rgba(56, 189, 248, 0.18), rgba(129, 140, 248, 0.18));
+            color: #e0f2fe;
+            font-size: 1.35rem;
+            font-weight: 700;
+        }
+
         th,
         td {
             padding: 10px 12px;
@@ -197,6 +223,7 @@
 
             const rows = filteredItems.map(item => `
                 <tr>
+                    <td class="thumb-cell">${renderThumb(item)}</td>
                     <td>${escapeHtml(item.camera || 'Unknown')}</td>
                     <td>${escapeHtml(item.name || '')}</td>
                     <td>${escapeHtml(item.kind || '')}</td>
@@ -210,6 +237,7 @@
                 <table>
                     <thead>
                         <tr>
+                            <th class="thumb-cell">Preview</th>
                             <th>Camera</th>
                             <th>Filename</th>
                             <th>Type</th>
@@ -221,6 +249,14 @@
                     <tbody>${rows}</tbody>
                 </table>
             `;
+        }
+
+        function renderThumb(item) {
+            const kind = (item.kind || '').toLowerCase();
+            if (kind === 'image') {
+                return `<img class="thumb" src="file://${escapeHtml(item.path || '')}" alt="${escapeHtml(item.name || 'Image preview')}" />`;
+            }
+            return `<div class="thumb-icon" aria-label="Video preview">▶</div>`;
         }
 
         function escapeHtml(value) {
