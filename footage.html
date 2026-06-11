@@ -352,7 +352,7 @@
             const kind = (item.kind || '').toLowerCase();
             const cameraLabel = escapeHtml(item.camera || 'Unknown camera');
             const preview = kind === 'image'
-                ? `<img class="thumb preview-thumb" data-path="${escapeHtml(item.path || '')}" src="" alt="${escapeHtml(item.name || 'Image preview')}" />`
+                ? `<img class="thumb preview-thumb" data-path="${escapeHtml(item.path || '')}" src="" alt="${escapeHtml(item.name || 'Image preview')}" loading="lazy" decoding="async" />`
                 : `<div class="thumb-icon" aria-label="Video preview">▶</div>`;
             return `<figure class="thumb-card">${preview}<figcaption class="thumb-caption">${cameraLabel}</figcaption></figure>`;
         }
@@ -370,7 +370,7 @@
                 }
 
                 try {
-                    const response = await fetch(previewUrlFor(path));
+                    const response = await fetch(previewUrlFor(path), { cache: 'no-store' });
                     if (!response.ok) throw new Error(`Preview failed (${response.status})`);
                     const blob = await response.blob();
                     const objectUrl = URL.createObjectURL(blob);

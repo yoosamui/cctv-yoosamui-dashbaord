@@ -80,10 +80,20 @@ def find_files(root: Path):
         return []
 
     results = []
-    for path in sorted(root.rglob("*")):
+    entries = []
+    for path in root.rglob("*"):
         if path.is_file():
             stat = path.stat()
-            results.append({
+            entries.append((path, stat))
+
+    entries.sort(key=lambda item: (
+        0 if file_kind(item[0]) == "Image" else 1 if file_kind(item[0]) == "Video" else 2,
+        item[1].st_mtime,
+        item[0].name,
+    ), reverse=True)
+
+    for path, stat in entries:
+        results.append({
                 "name": path.name,
                 "path": str(path),
                 "camera": path.parent.name,
