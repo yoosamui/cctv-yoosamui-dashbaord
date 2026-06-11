@@ -195,7 +195,8 @@
                 <button id="searchBtn" class="btn" type="button">Search</button>
             </div>
             <p class="hint">Accepted forms: <strong>--since [date] [time]</strong>, <strong>--since [time]</strong>, or
-                <strong>--since [date]</strong>.</p>
+                <strong>--since [date]</strong>.
+            </p>
             <div id="status" class="status">Ready to scan camera folders.</div>
             <div id="results" style="margin-top: 14px; overflow-x:auto;"></div>
         </section>
@@ -254,7 +255,9 @@
         function renderThumb(item) {
             const kind = (item.kind || '').toLowerCase();
             if (kind === 'image') {
-                return `<img class="thumb" src="file://${escapeHtml(item.path || '')}" alt="${escapeHtml(item.name || 'Image preview')}" />`;
+                const previewBase = window.location.port === '8880' ? '/api/preview' : 'http://127.0.0.1:8881/api/preview';
+                const previewUrl = `${previewBase}?path=${encodeURIComponent(item.path || '')}`;
+                return `<img class="thumb" src="${previewUrl}" alt="${escapeHtml(item.name || 'Image preview')}" onerror="this.style.display='none';" />`;
             }
             return `<div class="thumb-icon" aria-label="Video preview">▶</div>`;
         }

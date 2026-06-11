@@ -14,6 +14,14 @@ PORT = 8881
 
 VIDEO_EXTENSIONS = {".mp4", ".mov", ".mkv", ".avi", ".webm"}
 IMAGE_EXTENSIONS = {".jpg", ".jpeg", ".png", ".gif", ".bmp", ".webp"}
+MIME_TYPES = {
+    ".jpg": "image/jpeg",
+    ".jpeg": "image/jpeg",
+    ".png": "image/png",
+    ".gif": "image/gif",
+    ".bmp": "image/bmp",
+    ".webp": "image/webp",
+}
 
 
 def human_size(size: int) -> str:
@@ -94,6 +102,11 @@ class Handler(BaseHTTPRequestHandler):
     def do_GET(self):
         parsed = urlparse(self.path)
         params = parse_qs(parsed.query)
+
+        if parsed.path == "/api/preview":
+            self.handle_preview(parsed, params)
+            return
+
         query = params.get("query", [""])[0].strip()
 
         if parsed.path != "/api/footage":
@@ -134,6 +147,32 @@ class Handler(BaseHTTPRequestHandler):
         self.send_header("Access-Control-Allow-Origin", "*")
         self.end_headers()
         self.wfile.write(body)
+
+    def handle_preview(self, parsed, params):
+        raw_path = params.get("path", [""])[0]
+        if not raw_path:
+            self.send_response(400)
+            self.end_headers()
+            self.wfile.write(b"Missing path parameter")
+            return
+
+        target = Path(raw_path)
+        if not target.exists() or not target.is_file():
+            self.send_response(404)
+            self.end_headers()
+            self.wfile.write(b"File not found")
+            return
+
+        mime_type = MIME_TYPES.get(target.suffix.lower(), "application/octet-stream")
+        data = target.read_bytes()
+
+        self.send_response(200)
+        self.send_header("Content-Type", mime_type)
+        self.send_header("Content-Length", str(len(data)))
+        self.send_header("Cache-Control", "public, max-age=300")
+        self.send_header("Access-Control-Allow-Origin", "*")
+        self.end_headers()
+        self.wfile.write(data)
 
     def log_message(self, format, *args):
         return
