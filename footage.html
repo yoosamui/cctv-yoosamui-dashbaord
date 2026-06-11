@@ -74,6 +74,14 @@
             color: #eff6ff;
         }
 
+        .filter-select {
+            padding: 10px 12px;
+            border-radius: 10px;
+            border: 1px solid rgba(148, 163, 184, 0.25);
+            background: rgba(15, 23, 42, 0.95);
+            color: #eff6ff;
+        }
+
         .btn {
             border: 1px solid rgba(56, 189, 248, 0.35);
             background: rgba(56, 189, 248, 0.14);
@@ -153,6 +161,11 @@
         <section class="card">
             <div class="search-row">
                 <input id="query" class="search-input" type="text" placeholder="Example: --since 2026-06-12 14:30" />
+                <select id="typeFilter" class="filter-select" aria-label="Media type filter">
+                    <option value="all">All media</option>
+                    <option value="video">Videos only</option>
+                    <option value="image">Images only</option>
+                </select>
                 <button id="searchBtn" class="btn" type="button">Search</button>
             </div>
             <p class="hint">Accepted forms: <strong>--since [date] [time]</strong>, <strong>--since [time]</strong>, or
@@ -165,16 +178,24 @@
     <script>
         const apiCandidates = ['/api/footage', 'http://127.0.0.1:8881/api/footage'];
         const queryInput = document.getElementById('query');
+        const typeFilter = document.getElementById('typeFilter');
         const resultsBox = document.getElementById('results');
         const statusBox = document.getElementById('status');
 
+        typeFilter.value = 'all';
+
         function renderTable(items) {
-            if (!items || items.length === 0) {
+            const selectedType = (typeFilter.value || 'all').toLowerCase();
+            const filteredItems = selectedType === 'all'
+                ? items
+                : items.filter(item => (item.kind || '').toLowerCase() === selectedType);
+
+            if (!filteredItems || filteredItems.length === 0) {
                 resultsBox.innerHTML = '<p class="muted">No footage matched this query.</p>';
                 return;
             }
 
-            const rows = items.map(item => `
+            const rows = filteredItems.map(item => `
                 <tr>
                     <td>${escapeHtml(item.camera || 'Unknown')}</td>
                     <td>${escapeHtml(item.name || '')}</td>
@@ -230,7 +251,8 @@
                         throw new Error(`HTTP ${response.status}`);
                     }
                     const data = await response.json();
-                    statusBox.textContent = `Found ${data.count} result(s) under ${data.root}.`;
+                    const typeLabel = typeFilter.value === 'all' ? 'all media' : typeFilter.value + 's';
+                    statusBox.textContent = `Found ${data.count} result(s) for ${typeLabel} under ${data.root}.`;
                     renderTable(data.items || []);
                     return;
                 } catch (error) {
