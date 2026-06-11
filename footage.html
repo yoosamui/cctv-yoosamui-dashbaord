@@ -230,7 +230,7 @@
                     <td>${escapeHtml(item.kind || '')}</td>
                     <td>${escapeHtml(item.modified || '')}</td>
                     <td>${escapeHtml(item.size || '')}</td>
-                    <td><a href="file://${escapeHtml(item.path || '')}" target="_blank" rel="noreferrer">Open</a></td>
+                    <td><a href="${escapeHtml(item.path || '')}" target="_blank" rel="noreferrer">Open</a></td>
                 </tr>
             `).join('');
 
@@ -250,16 +250,39 @@
                     <tbody>${rows}</tbody>
                 </table>
             `;
+
+            hydratePreviewImages();
         }
 
         function renderThumb(item) {
             const kind = (item.kind || '').toLowerCase();
             if (kind === 'image') {
-                const previewBase = window.location.port === '8880' ? '/api/preview' : 'http://127.0.0.1:8881/api/preview';
-                const previewUrl = `${previewBase}?path=${encodeURIComponent(item.path || '')}`;
-                return `<img class="thumb" src="${previewUrl}" alt="${escapeHtml(item.name || 'Image preview')}" onerror="this.style.display='none';" />`;
+                return `<img class="thumb preview-thumb" data-path="${escapeHtml(item.path || '')}" src="" alt="${escapeHtml(item.name || 'Image preview')}" />`;
             }
             return `<div class="thumb-icon" aria-label="Video preview">▶</div>`;
+        }
+
+        async function hydratePreviewImages() {
+            const previewBase = window.location.port === '8880' ? '/api/preview' : 'http://127.0.0.1:8881/api/preview';
+            const images = document.querySelectorAll('.preview-thumb');
+
+            for (const image of images) {
+                const path = image.getAttribute('data-path');
+                if (!path) continue;
+
+                try {
+                    const response = await fetch(`${previewBase}?path=${encodeURIComponent(path)}`);
+                    if (!response.ok) throw new Error('Preview failed');
+                    const blob = await response.blob();
+                    image.src = URL.createObjectURL(blob);
+                    image.onerror = () => {
+                        image.alt = 'Preview unavailable';
+                    };
+                } catch (error) {
+                    image.alt = 'Preview unavailable';
+                    image.title = 'Preview unavailable';
+                }
+            }
         }
 
         function escapeHtml(value) {
