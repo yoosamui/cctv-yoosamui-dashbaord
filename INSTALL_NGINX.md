@@ -67,7 +67,26 @@ http://<PI_IP_ADDRESS>:8880/
 
 You should see the CCTV Dashboard start page.
 
-## 7. Optional helper script
+## 7. Run the Footage API as a service
+
+The footage page needs the API running on `127.0.0.1:8881` at all times (Nginx
+proxies `/api/` to it). Running `python3 scripts/footage_api.py` in a terminal
+stops the moment that terminal closes, which makes the footage search fail.
+Install it as a systemd service so it starts on boot and restarts on failure:
+
+```bash
+chmod +x scripts/install-footage-api.sh
+./scripts/install-footage-api.sh
+```
+
+Verify it is listening:
+
+```bash
+sudo systemctl status footage-api.service
+curl -s -o /dev/null -w '%{http_code}\n' 'http://127.0.0.1:8881/api/footage?query=today'   # expect 200
+```
+
+## 8. Optional helper script
 
 You can run the helper script included in this project:
 
