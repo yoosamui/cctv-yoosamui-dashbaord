@@ -141,6 +141,7 @@ def find_files(root: Path):
                 "kind": file_kind(path),
                 "modified": datetime.fromtimestamp(stat.st_mtime).isoformat(timespec="seconds"),
                 "size": human_size(stat.st_size),
+                "bytes": stat.st_size,
             })
     return results
 

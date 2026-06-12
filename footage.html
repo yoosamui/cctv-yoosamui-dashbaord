@@ -259,8 +259,46 @@
         let fetchedItems = [];
         let allItems = [];
         let currentPage = 1;
+        // Active column sort. null = default order (grouped, newest-first).
+        let sortColumn = null;
+        let sortAsc = false;
 
         typeFilter.value = 'all';
+
+        // Columns the user can sort by (header text + how to read the value).
+        const SORT_COLUMNS = {
+            name: { label: 'Filename', value: it => (it.name || '').toLowerCase() },
+            kind: { label: 'Type', value: it => (it.kind || '').toLowerCase() },
+            modified: { label: 'Modified', value: it => it.modified || '' },
+            size: { label: 'Size', value: it => Number(it.bytes || 0) },
+        };
+
+        // Sort whole groups (a video + its detection images) by the active column,
+        // using the video's value, so images stay attached below their video.
+        function sortedForDisplay() {
+            if (!sortColumn || !SORT_COLUMNS[sortColumn]) return allItems;
+
+            const groups = [];
+            let current = null, currentKey = null;
+            for (const item of allItems) {
+                const key = groupKeyOf(item.name || '');
+                if (key !== currentKey) { current = []; groups.push(current); currentKey = key; }
+                current.push(item);
+            }
+
+            const valueOf = SORT_COLUMNS[sortColumn].value;
+            const groupValue = group => {
+                const lead = group.find(x => (x.kind || '').toLowerCase() === 'video') || group[0];
+                return valueOf(lead);
+            };
+            groups.sort((a, b) => {
+                const av = groupValue(a), bv = groupValue(b);
+                if (av < bv) return sortAsc ? -1 : 1;
+                if (av > bv) return sortAsc ? 1 : -1;
+                return 0;
+            });
+            return groups.flat();
+        }
 
         function previewCandidates(path) {
             const query = `path=${encodeURIComponent(path)}`;
@@ -276,6 +314,8 @@
             // without re-running the search.
             if (items !== undefined) {
                 fetchedItems = items || [];
+                sortColumn = null;
+                sortAsc = false;
             }
 
             const selectedType = (typeFilter.value || 'all').toLowerCase();
@@ -320,12 +360,16 @@
         }
 
         function renderPage() {
-            const pages = buildPages(allItems);
+            const displayItems = sortedForDisplay();
+            const pages = buildPages(displayItems);
             const totalPages = pages.length;
             currentPage = Math.min(currentPage, totalPages);
 
             const [start, end] = pages[currentPage - 1];
-            const pageItems = allItems.slice(start, end);
+            const pageItems = displayItems.slice(start, end);
+            const arrow = col => sortColumn === col ? (sortAsc ? ' ▲' : ' ▼') : '';
+            const th = (col, text) =>
+                `<th class="sortable" data-col="${col}" style="cursor:pointer;">${text}${arrow(col)}</th>`;
             const rows = pageItems.map(item => `
                 <tr>
                     <td class="thumb-cell">${renderThumb(item)}</td>
@@ -347,10 +391,10 @@
                         <thead>
                             <tr>
                                 <th class="thumb-cell">Preview</th>
-                                <th>Filename</th>
-                                <th>Type</th>
-                                <th>Modified</th>
-                                <th>Size</th>
+                                ${th('name', 'Filename')}
+                                ${th('kind', 'Type')}
+                                ${th('modified', 'Modified')}
+                                ${th('size', 'Size')}
                                 <th>Open</th>
                             </tr>
                         </thead>
@@ -375,10 +419,24 @@
             });
 
             document.getElementById('nextPageBtn')?.addEventListener('click', () => {
-                if (currentPage < buildPages(allItems).length) {
+                if (currentPage < buildPages(sortedForDisplay()).length) {
                     currentPage += 1;
                     renderPage();
                 }
+            });
+
+            resultsBox.querySelectorAll('th.sortable').forEach(header => {
+                header.addEventListener('click', () => {
+                    const col = header.getAttribute('data-col');
+                    if (sortColumn === col) {
+                        sortAsc = !sortAsc;
+                    } else {
+                        sortColumn = col;
+                        sortAsc = true;
+                    }
+                    currentPage = 1;
+                    renderPage();
+                });
             });
 
             hydratePreviewImages();
