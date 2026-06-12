@@ -232,15 +232,82 @@ class Handler(BaseHTTPRequestHandler):
             return
 
         mime_type = MIME_TYPES.get(target.suffix.lower(), "application/octet-stream")
-        data = target.read_bytes()
+        file_size = target.stat().st_size
 
-        self.send_response(200)
+        # Honour HTTP range requests so the browser can seek within videos.
+        start, end = self.parse_range(self.headers.get("Range"), file_size)
+
+        if start is None:
+            # No (or unsatisfiable -> treated as full) range: send the whole file.
+            self.send_response(200)
+            self.send_header("Content-Type", mime_type)
+            self.send_header("Content-Length", str(file_size))
+            self.send_header("Accept-Ranges", "bytes")
+            self.send_header("Cache-Control", "public, max-age=300")
+            self.send_header("Access-Control-Allow-Origin", "*")
+            self.end_headers()
+            self.stream_file(target, 0, file_size - 1)
+            return
+
+        length = end - start + 1
+        self.send_response(206)
         self.send_header("Content-Type", mime_type)
-        self.send_header("Content-Length", str(len(data)))
+        self.send_header("Content-Length", str(length))
+        self.send_header("Content-Range", f"bytes {start}-{end}/{file_size}")
+        self.send_header("Accept-Ranges", "bytes")
         self.send_header("Cache-Control", "public, max-age=300")
         self.send_header("Access-Control-Allow-Origin", "*")
         self.end_headers()
-        self.wfile.write(data)
+        self.stream_file(target, start, end)
+
+    @staticmethod
+    def parse_range(header, file_size):
+        """Parse a single-range "Range: bytes=start-end" header.
+
+        Returns (start, end) inclusive byte offsets, or (None, None) when there
+        is no range to honour (no header, malformed, or unsatisfiable).
+        """
+        if not header or file_size == 0:
+            return None, None
+
+        match = re.fullmatch(r"bytes=(\d*)-(\d*)", header.strip())
+        if not match:
+            return None, None
+
+        start_raw, end_raw = match.group(1), match.group(2)
+        if start_raw == "" and end_raw == "":
+            return None, None
+
+        if start_raw == "":
+            # Suffix range: last N bytes.
+            length = int(end_raw)
+            if length == 0:
+                return None, None
+            start = max(0, file_size - length)
+            end = file_size - 1
+        else:
+            start = int(start_raw)
+            end = int(end_raw) if end_raw != "" else file_size - 1
+
+        end = min(end, file_size - 1)
+        if start > end:
+            # Unsatisfiable; fall back to a full response.
+            return None, None
+
+        return start, end
+
+    def stream_file(self, target, start, end):
+        """Write bytes [start, end] of target to the socket in chunks."""
+        remaining = end - start + 1
+        chunk_size = 64 * 1024
+        with target.open("rb") as handle:
+            handle.seek(start)
+            while remaining > 0:
+                chunk = handle.read(min(chunk_size, remaining))
+                if not chunk:
+                    break
+                self.wfile.write(chunk)
+                remaining -= len(chunk)
 
     def log_message(self, format, *args):
         return
