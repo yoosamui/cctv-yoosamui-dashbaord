@@ -25,7 +25,19 @@ const video = params.get("video");
 document.getElementById("videoSource").src = video;
 document.getElementById("player").load();
 
+
 function skip(seconds) {
+    const v = document.getElementById('player');
+
+    console.log(
+        "current=", v.currentTime,
+        "duration=", v.duration
+    );
+
+    v.currentTime += seconds;
+}
+
+function skip_old(seconds) {
     const v = document.getElementById("player");
 
     let newTime = v.currentTime + seconds;
