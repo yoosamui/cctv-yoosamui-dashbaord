@@ -2,7 +2,7 @@
 <html>
 <head>
 <meta charset="utf-8">
-<title>Video Viewer</title>
+<title>Media Viewer</title>
 
 <style>
 body {
@@ -22,10 +22,12 @@ body {
     padding: 20px;
 }
 
-video {
+video,
+img {
     width: 100%;
     max-height: 80vh;
     border-radius: 12px;
+    object-fit: contain;
 }
 
 .controls {
@@ -49,11 +51,13 @@ button {
 
 <div class="container">
 
-    <video id="player" controls>
+    <video id="player" controls style="display:none">
         <source id="videoSource" src="" type="video/mp4">
     </video>
 
-    <div class="controls">
+    <img id="image" alt="" style="display:none">
+
+    <div id="controls" class="controls" style="display:none">
         <button type="button" onclick="skip(-30)">⏪ -30s</button>
         <button type="button" onclick="skip(-10)">⏪ -10s</button>
         <button type="button" onclick="skip(-1)">◀ -1s</button>
@@ -67,14 +71,43 @@ button {
 
 <script>
 
+const IMAGE_EXTENSIONS = ["jpg", "jpeg", "png", "gif", "bmp", "webp"];
+
 const params = new URLSearchParams(window.location.search);
-const video = params.get("video");
+const media = params.get("video");
 
 const player = document.getElementById("player");
 const source = document.getElementById("videoSource");
+const image = document.getElementById("image");
+const controls = document.getElementById("controls");
 
-source.src = video;
-player.load();
+// The media URL is the preview endpoint, e.g.
+// /api/preview?path=/storage/2026-06-12/cam/snapshot.jpg
+// Read the extension from the inner "path" param, falling back to
+// the URL itself, so we know whether to show an image or a video.
+function mediaExtension(url) {
+    let target = url || "";
+    try {
+        const parsed = new URL(url, window.location.href);
+        target = parsed.searchParams.get("path") || parsed.pathname;
+    } catch (e) {
+        // url was relative/odd; fall back to the raw string
+    }
+    const match = /\.([a-z0-9]+)(?:$|\?)/i.exec(target);
+    return match ? match[1].toLowerCase() : "";
+}
+
+const isImage = IMAGE_EXTENSIONS.includes(mediaExtension(media));
+
+if (isImage) {
+    image.src = media;
+    image.style.display = "";
+} else {
+    source.src = media;
+    player.load();
+    player.style.display = "";
+    controls.style.display = "";
+}
 
 player.addEventListener('seeked', () => {
     console.log('SEEKED TO:', player.currentTime);

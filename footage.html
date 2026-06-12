@@ -108,44 +108,49 @@
         }
 
         .thumb-cell {
-            width: 148px;
+            width: 1%;
+            white-space: nowrap;
         }
 
         .thumb-card {
+            margin: 0;
             display: flex;
-            flex-direction: column;
+            flex-direction: row;
             align-items: center;
-            gap: 6px;
-            width: 148px;
+            gap: 8px;
         }
 
         .thumb {
-            width: 148px;
-            height: 100px;
+            width: 32px;
+            height: 32px;
             object-fit: cover;
-            border-radius: 10px;
+            border-radius: 6px;
             border: 1px solid rgba(148, 163, 184, 0.18);
             background: rgba(30, 41, 59, 0.95);
         }
 
         .thumb-icon {
-            width: 148px;
-            height: 100px;
+            width: 32px;
+            height: 32px;
             display: grid;
             place-items: center;
-            border-radius: 10px;
+            border-radius: 6px;
             border: 1px solid rgba(148, 163, 184, 0.18);
             background: linear-gradient(135deg, rgba(56, 189, 248, 0.18), rgba(129, 140, 248, 0.18));
             color: #e0f2fe;
-            font-size: 1.35rem;
+            font-size: 0.85rem;
             font-weight: 700;
+        }
+
+        .thumb-link {
+            display: inline-block;
+            text-decoration: none;
         }
 
         .thumb-caption {
             font-size: 0.85rem;
             color: #dbeafe;
-            text-align: center;
-            word-break: break-word;
+            white-space: nowrap;
         }
 
         th,
@@ -481,12 +486,6 @@
                     <td>${escapeHtml(item.kind || '')}</td>
                     <td>${escapeHtml(item.modified || '')}</td>
                     <td>${escapeHtml(item.size || '')}</td>
-                    <td>
-   			 <a href="details.html?video=${encodeURIComponent(previewUrlFor(item.path || ''))}"
-       				target="_blank"> Open  
-       		        </a> 
-       		   </td>
-                    
                 </tr>
             `).join('');
 
@@ -504,7 +503,6 @@
                                 ${th('kind', 'Type')}
                                 ${th('modified', 'Modified')}
                                 ${th('size', 'Size')}
-                                <th>Open</th>
                             </tr>
                         </thead>
                         <tbody>${rows}</tbody>
@@ -554,10 +552,11 @@
         function renderThumb(item) {
             const kind = (item.kind || '').toLowerCase();
             const cameraLabel = escapeHtml(item.camera || 'Unknown camera');
+            const href = `details.html?video=${encodeURIComponent(previewUrlFor(item.path || ''))}`;
             const preview = kind === 'image'
                 ? `<img class="thumb preview-thumb" data-path="${escapeHtml(item.path || '')}" src="" alt="${escapeHtml(item.name || 'Image preview')}" loading="lazy" decoding="async" />`
                 : `<div class="thumb-icon" aria-label="Video preview">▶</div>`;
-            return `<figure class="thumb-card">${preview}<figcaption class="thumb-caption">${cameraLabel}</figcaption></figure>`;
+            return `<a class="thumb-link" href="${href}" target="_blank"><figure class="thumb-card">${preview}<figcaption class="thumb-caption">${cameraLabel}</figcaption></figure></a>`;
         }
 
         async function hydratePreviewImages() {
