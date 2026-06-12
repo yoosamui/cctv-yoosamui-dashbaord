@@ -3,7 +3,7 @@ set -euo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 PROJECT_DIR="$(cd "$SCRIPT_DIR/.." && pwd)"
-SERVICE_TEMPLATE="$PROJECT_DIR/config/footage-api.service"
+SERVICE_TEMPLATE="$PROJECT_DIR/config/cctv-footage-api.service"
 RUN_USER="${SUDO_USER:-$(id -un)}"
 TMP_UNIT="$(mktemp)"
 
@@ -22,10 +22,10 @@ sed -e "s|__PROJECT_DIR__|$PROJECT_DIR|g" \
     -e "s|__RUN_USER__|$RUN_USER|g" \
     "$SERVICE_TEMPLATE" > "$TMP_UNIT"
 
-sudo cp "$TMP_UNIT" /etc/systemd/system/footage-api.service
+sudo cp "$TMP_UNIT" /etc/systemd/system/cctv-footage-api.service
 sudo systemctl daemon-reload
-sudo systemctl enable footage-api.service
-sudo systemctl restart footage-api.service
+sudo systemctl enable cctv-footage-api.service
+sudo systemctl restart cctv-footage-api.service
 
-echo "Done. Check status with: sudo systemctl status footage-api.service"
+echo "Done. Check status with: sudo systemctl status cctv-footage-api.service"
 echo "Verify the API: curl -s -o /dev/null -w '%{http_code}\\n' 'http://127.0.0.1:8881/api/footage?query=today'"

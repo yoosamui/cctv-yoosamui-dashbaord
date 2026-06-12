@@ -82,7 +82,7 @@ chmod +x scripts/install-footage-api.sh
 Verify it is listening:
 
 ```bash
-sudo systemctl status footage-api.service
+sudo systemctl status cctv-footage-api.service
 curl -s -o /dev/null -w '%{http_code}\n' 'http://127.0.0.1:8881/api/footage?query=today'   # expect 200
 ```
 
