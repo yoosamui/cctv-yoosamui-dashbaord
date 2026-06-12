@@ -76,27 +76,37 @@ const source = document.getElementById("videoSource");
 source.src = video;
 player.load();
 
+player.addEventListener('seeked', () => {
+    console.log('SEEKED TO:', player.currentTime);
+});
+
+player.addEventListener('seeking', () => {
+    console.log('SEEKING TO:', player.currentTime);
+});
+
 function skip(seconds) {
 
-    if (!isFinite(player.duration))
-        return;
-
-    let newTime = player.currentTime + seconds;
-
-    if (newTime < 0)
-        newTime = 0;
-
-    if (newTime > player.duration)
-        newTime = player.duration;
-
-    player.currentTime = newTime;
-
     console.log(
-        "Seek:",
+        "BEFORE:",
         player.currentTime,
-        "/",
         player.duration
     );
+
+    // duration is NaN until metadata loads; only clamp the
+    // upper bound when we actually know the duration.
+    let target = player.currentTime + seconds;
+    target = Math.max(0, target);
+    if (!isNaN(player.duration)) {
+        target = Math.min(player.duration, target);
+    }
+    player.currentTime = target;
+
+    setTimeout(() => {
+        console.log(
+            "AFTER:",
+            player.currentTime
+        );
+    }, 500);
 }
 
 </script>
