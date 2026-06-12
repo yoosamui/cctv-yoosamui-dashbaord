@@ -86,11 +86,12 @@ def find_files(root: Path):
             stat = path.stat()
             entries.append((path, stat))
 
+    kind_order = {"Image": 0, "Video": 1}
     entries.sort(key=lambda item: (
-        0 if file_kind(item[0]) == "Image" else 1 if file_kind(item[0]) == "Video" else 2,
-        item[1].st_mtime,
+        kind_order.get(file_kind(item[0]), 2),
+        -item[1].st_mtime,
         item[0].name,
-    ), reverse=True)
+    ))
 
     for path, stat in entries:
         results.append({

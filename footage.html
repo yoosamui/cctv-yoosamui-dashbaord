@@ -249,7 +249,8 @@
     </main>
 
     <script>
-        const apiCandidates = ['/api/footage', 'http://127.0.0.1:8881/api/footage'];
+        const apiHosts = ['', 'http://127.0.0.1:8881'];
+        const apiCandidates = apiHosts.map(host => `${host}/api/footage`);
         const PAGE_SIZE = 50;
         const queryInput = document.getElementById('query');
         const typeFilter = document.getElementById('typeFilter');
@@ -260,9 +261,13 @@
 
         typeFilter.value = 'all';
 
+        function previewCandidates(path) {
+            const query = `path=${encodeURIComponent(path)}`;
+            return apiHosts.map(host => `${host}/api/preview?${query}`);
+        }
+
         function previewUrlFor(path) {
-            const base = window.location.port === '8880' ? '/api/preview' : 'http://127.0.0.1:8881/api/preview';
-            return `${base}?path=${encodeURIComponent(path)}`;
+            return previewCandidates(path)[0];
         }
 
         function renderTable(items) {
@@ -367,17 +372,27 @@
                 const previousUrl = image.dataset.objectUrl;
                 if (previousUrl) {
                     URL.revokeObjectURL(previousUrl);
+                    delete image.dataset.objectUrl;
                 }
 
-                try {
-                    const response = await fetch(previewUrlFor(path), { cache: 'no-store' });
-                    if (!response.ok) throw new Error(`Preview failed (${response.status})`);
-                    const blob = await response.blob();
-                    const objectUrl = URL.createObjectURL(blob);
-                    image.dataset.objectUrl = objectUrl;
-                    image.src = objectUrl;
-                    image.alt = image.alt || 'Image preview';
-                } catch (error) {
+                let loaded = false;
+                for (const url of previewCandidates(path)) {
+                    try {
+                        const response = await fetch(url, { cache: 'no-store' });
+                        if (!response.ok) throw new Error(`Preview failed (${response.status})`);
+                        const blob = await response.blob();
+                        const objectUrl = URL.createObjectURL(blob);
+                        image.dataset.objectUrl = objectUrl;
+                        image.src = objectUrl;
+                        image.alt = image.alt || 'Image preview';
+                        loaded = true;
+                        break;
+                    } catch (error) {
+                        // Try the next candidate host.
+                    }
+                }
+
+                if (!loaded) {
                     image.alt = 'Preview unavailable';
                     image.title = 'Preview unavailable';
                 }
