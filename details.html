@@ -1,53 +1,105 @@
 <!doctype html>
 <html>
 <head>
-    <meta charset="utf-8">
-    <title>Video Viewer</title>
+<meta charset="utf-8">
+<title>Video Viewer</title>
+
+<style>
+body {
+    margin: 0;
+    background: #07111f;
+    color: #eff6ff;
+    font-family: Arial, sans-serif;
+
+    display: flex;
+    justify-content: center;
+}
+
+.container {
+    width: 95%;
+    max-width: 1200px;
+    text-align: center;
+    padding: 20px;
+}
+
+video {
+    width: 100%;
+    max-height: 80vh;
+    border-radius: 12px;
+}
+
+.controls {
+    margin-top: 15px;
+
+    display: flex;
+    justify-content: center;
+    gap: 10px;
+    flex-wrap: wrap;
+}
+
+button {
+    padding: 10px 16px;
+    border-radius: 8px;
+    cursor: pointer;
+}
+</style>
 </head>
+
 <body>
 
-<button onclick="skip(-30)">⏪ -30s</button>
-<button onclick="skip(-10)">⏪ -10s</button>
-<button onclick="skip(-1)">◀ -1s</button>
+<div class="container">
 
-<video id="player" controls width="1000">
-    <source id="videoSource" src="" type="video/mp4">
-</video>
+    <video id="player" controls>
+        <source id="videoSource" src="" type="video/mp4">
+    </video>
 
-<button onclick="skip(1)">▶ +1s</button>
-<button onclick="skip(10)">⏩ +10s</button>
-<button onclick="skip(30)">⏩ +30s</button>
+    <div class="controls">
+        <button type="button" onclick="skip(-30)">⏪ -30s</button>
+        <button type="button" onclick="skip(-10)">⏪ -10s</button>
+        <button type="button" onclick="skip(-1)">◀ -1s</button>
+
+        <button type="button" onclick="skip(1)">▶ +1s</button>
+        <button type="button" onclick="skip(10)">⏩ +10s</button>
+        <button type="button" onclick="skip(30)">⏩ +30s</button>
+    </div>
+
+</div>
 
 <script>
+
 const params = new URLSearchParams(window.location.search);
 const video = params.get("video");
 
-document.getElementById("videoSource").src = video;
-document.getElementById("player").load();
+const player = document.getElementById("player");
+const source = document.getElementById("videoSource");
 
+source.src = video;
+player.load();
 
 function skip(seconds) {
-    const v = document.getElementById('player');
 
-    console.log(
-        "current=", v.currentTime,
-        "duration=", v.duration
-    );
+    if (!isFinite(player.duration))
+        return;
 
-    v.currentTime += seconds;
-}
-
-function skip_old(seconds) {
-    const v = document.getElementById("player");
-
-    let newTime = v.currentTime + seconds;
+    let newTime = player.currentTime + seconds;
 
     if (newTime < 0)
         newTime = 0;
 
-    if (newTime > v.duration)
-        newTime = v.duration;
+    if (newTime > player.duration)
+        newTime = player.duration;
 
-    v.currentTime = newTime;
+    player.currentTime = newTime;
+
+    console.log(
+        "Seek:",
+        player.currentTime,
+        "/",
+        player.duration
+    );
 }
+
 </script>
+
+</body>
+</html>
