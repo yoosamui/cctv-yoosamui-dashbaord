@@ -275,31 +275,84 @@
 
         // Sort whole groups (a video + its detection images) by the active column,
         // using the video's value, so images stay attached below their video.
+       
         function sortedForDisplay() {
-	    const items = [...allItems];
 
-	    // Default view:
-	    // newest media first using actual file timestamp
-	    if (!sortColumn) {
-		return items.sort((a, b) => {
-		    return new Date(b.modified) - new Date(a.modified);
-		});
-	    }
+    // Return the video for a group, or the first item if somehow
+    // the group contains no video.
+    function leadItem(group) {
+        return group.find(
+            item => (item.kind || '').toLowerCase() === 'video'
+        ) || group[0];
+    }
 
-	    const valueOf = SORT_COLUMNS[sortColumn].value;
+    // Build groups using camera + group key
+    const groupsMap = new Map();
 
-	    items.sort((a, b) => {
-		const av = valueOf(a);
-		const bv = valueOf(b);
+    for (const item of allItems) {
+        const key =
+            `${item.camera || ''}|${groupKeyOf(item.name || '')}`;
 
-		if (av < bv) return sortAsc ? -1 : 1;
-		if (av > bv) return sortAsc ? 1 : -1;
-		return 0;
-	    });
+        if (!groupsMap.has(key)) {
+            groupsMap.set(key, []);
+        }
 
-    return items;
+        groupsMap.get(key).push(item);
+    }
+
+    const groups = Array.from(groupsMap.values());
+
+    // Ensure every group is always ordered:
+    // video first, then detection images by filename
+    for (const group of groups) {
+        group.sort((a, b) => {
+
+            const aVideo = (a.kind || '').toLowerCase() === 'video';
+            const bVideo = (b.kind || '').toLowerCase() === 'video';
+
+            if (aVideo && !bVideo) return -1;
+            if (!aVideo && bVideo) return 1;
+
+            return (a.name || '').localeCompare(b.name || '');
+        });
+    }
+
+    // Default view:
+    // newest videos first
+    if (!sortColumn) {
+
+        groups.sort((a, b) => {
+            const videoA = leadItem(a);
+            const videoB = leadItem(b);
+
+            return (
+                new Date(videoB.modified) -
+                new Date(videoA.modified)
+            );
+        });
+
+        return groups.flat();
+    }
+
+    const valueOf = SORT_COLUMNS[sortColumn].value;
+
+    groups.sort((a, b) => {
+
+        const leadA = leadItem(a);
+        const leadB = leadItem(b);
+
+        const av = valueOf(leadA);
+        const bv = valueOf(leadB);
+
+        if (av < bv) return sortAsc ? -1 : 1;
+        if (av > bv) return sortAsc ? 1 : -1;
+        return 0;
+    });
+
+    return groups.flat();
 }
-
+        
+        
         function previewCandidates(path) {
             const query = `path=${encodeURIComponent(path)}`;
             return apiHosts.map(host => `${host}/api/preview?${query}`);
@@ -344,20 +397,71 @@
 
         // Split items into pages of about PAGE_SIZE without ever cutting a group
         // (a video and its images) across a page boundary.
-      
-        function buildPages(items) {
-	    const pages = [];
+      	
+      	
+      	
+      	function buildPages(items) {
 
-	    for (let i = 0; i < items.length; i += PAGE_SIZE) {
-		pages.push([
-		    i,
-		    Math.min(i + PAGE_SIZE, items.length)
-		]);
-	    }
+    const pages = [];
+    let start = 0;
+    let count = 0;
 
-	    return pages.length ? pages : [[0, 0]];
-	} 
-      
+    let currentGroup = null;
+    let currentGroupSize = 0;
+
+    for (const item of items) {
+
+        const key =
+            `${item.camera || ''}|${groupKeyOf(item.name || '')}`;
+
+        if (key !== currentGroup) {
+
+            if (currentGroup !== null) {
+
+                if (
+                    count > 0 &&
+                    count + currentGroupSize > PAGE_SIZE
+                ) {
+                    pages.push([start, start + count]);
+                    start += count;
+                    count = 0;
+                }
+
+                count += currentGroupSize;
+            }
+
+            currentGroup = key;
+            currentGroupSize = 1;
+
+        } else {
+
+            currentGroupSize++;
+        }
+    }
+
+    // last group
+    if (currentGroup !== null) {
+
+        if (
+            count > 0 &&
+            count + currentGroupSize > PAGE_SIZE
+        ) {
+            pages.push([start, start + count]);
+            start += count;
+            count = 0;
+        }
+
+        count += currentGroupSize;
+    }
+
+    if (count > 0) {
+        pages.push([start, start + count]);
+    }
+
+    return pages.length ? pages : [[0, 0]];
+}
+      	
+  
 
         function renderPage() {
             const displayItems = sortedForDisplay();
