@@ -256,6 +256,7 @@
         const typeFilter = document.getElementById('typeFilter');
         const resultsBox = document.getElementById('results');
         const statusBox = document.getElementById('status');
+        let fetchedItems = [];
         let allItems = [];
         let currentPage = 1;
 
@@ -271,12 +272,17 @@
         }
 
         function renderTable(items) {
-            const selectedType = (typeFilter.value || 'all').toLowerCase();
-            const filteredItems = selectedType === 'all'
-                ? items
-                : items.filter(item => (item.kind || '').toLowerCase() === selectedType);
+            // Keep the full result set so the type dropdown can re-filter live
+            // without re-running the search.
+            if (items !== undefined) {
+                fetchedItems = items || [];
+            }
 
-            allItems = filteredItems || [];
+            const selectedType = (typeFilter.value || 'all').toLowerCase();
+            allItems = selectedType === 'all'
+                ? fetchedItems
+                : fetchedItems.filter(item => (item.kind || '').toLowerCase() === selectedType);
+
             currentPage = 1;
 
             if (!allItems.length) {
@@ -444,6 +450,13 @@
         queryInput.addEventListener('keydown', (event) => {
             if (event.key === 'Enter') {
                 searchFootage();
+            }
+        });
+        // Re-filter the already-loaded results immediately when the type changes,
+        // so picking "All media" restores videos without re-running the search.
+        typeFilter.addEventListener('change', () => {
+            if (fetchedItems.length) {
+                renderTable();
             }
         });
     </script>
