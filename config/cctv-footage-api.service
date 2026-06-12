@@ -1,6 +1,10 @@
 [Unit]
 Description=CCTV Dashboard Footage API
-After=network.target
+After=network-online.target
+Wants=network-online.target
+# Footage lives on the sshfs auto-mount at /media/share; make sure it is
+# mounted before the API starts (triggers the x-systemd.automount unit).
+RequiresMountsFor=/media/share
 
 [Service]
 Type=simple

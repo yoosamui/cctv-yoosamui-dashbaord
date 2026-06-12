@@ -8,7 +8,7 @@ from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
 from urllib.parse import parse_qs, urlparse
 
-STORAGE_ROOT = Path("/media/pi/share/cameras/cctv-storage")
+STORAGE_ROOT = Path(os.environ.get("FOOTAGE_STORAGE_ROOT", "/media/share/cameras/cctv-storage"))
 HOST = "127.0.0.1"
 PORT = 8881
 
