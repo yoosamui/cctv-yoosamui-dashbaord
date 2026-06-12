@@ -293,13 +293,38 @@
             renderPage();
         }
 
-        function renderPage() {
-            const totalPages = Math.ceil(allItems.length / PAGE_SIZE) || 1;
-            const safePage = Math.min(currentPage, totalPages);
-            currentPage = safePage;
+        // Key shared by a video and its detection images (mirrors the API),
+        // so pagination can keep a group together on one page.
+        function groupKeyOf(name) {
+            const marker = name.indexOf('_DETECTION');
+            if (marker >= 0) return name.slice(0, marker);
+            const dot = name.lastIndexOf('.');
+            return dot >= 0 ? name.slice(0, dot) : name;
+        }
 
-            const start = (currentPage - 1) * PAGE_SIZE;
-            const end = start + PAGE_SIZE;
+        // Split items into pages of about PAGE_SIZE without ever cutting a group
+        // (a video and its images) across a page boundary.
+        function buildPages(items) {
+            const pages = [];
+            let i = 0;
+            while (i < items.length) {
+                let end = Math.min(i + PAGE_SIZE, items.length);
+                while (end < items.length &&
+                       groupKeyOf(items[end].name || '') === groupKeyOf(items[end - 1].name || '')) {
+                    end++;
+                }
+                pages.push([i, end]);
+                i = end;
+            }
+            return pages.length ? pages : [[0, 0]];
+        }
+
+        function renderPage() {
+            const pages = buildPages(allItems);
+            const totalPages = pages.length;
+            currentPage = Math.min(currentPage, totalPages);
+
+            const [start, end] = pages[currentPage - 1];
             const pageItems = allItems.slice(start, end);
             const rows = pageItems.map(item => `
                 <tr>
@@ -350,7 +375,7 @@
             });
 
             document.getElementById('nextPageBtn')?.addEventListener('click', () => {
-                if (currentPage < Math.ceil(allItems.length / PAGE_SIZE)) {
+                if (currentPage < buildPages(allItems).length) {
                     currentPage += 1;
                     renderPage();
                 }
