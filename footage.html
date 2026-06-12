@@ -276,29 +276,29 @@
         // Sort whole groups (a video + its detection images) by the active column,
         // using the video's value, so images stay attached below their video.
         function sortedForDisplay() {
-            if (!sortColumn || !SORT_COLUMNS[sortColumn]) return allItems;
+	    const items = [...allItems];
 
-            const groups = [];
-            let current = null, currentKey = null;
-            for (const item of allItems) {
-                const key = groupKeyOf(item.name || '');
-                if (key !== currentKey) { current = []; groups.push(current); currentKey = key; }
-                current.push(item);
-            }
+	    // Default view:
+	    // newest media first using actual file timestamp
+	    if (!sortColumn) {
+		return items.sort((a, b) => {
+		    return new Date(b.modified) - new Date(a.modified);
+		});
+	    }
 
-            const valueOf = SORT_COLUMNS[sortColumn].value;
-            const groupValue = group => {
-                const lead = group.find(x => (x.kind || '').toLowerCase() === 'video') || group[0];
-                return valueOf(lead);
-            };
-            groups.sort((a, b) => {
-                const av = groupValue(a), bv = groupValue(b);
-                if (av < bv) return sortAsc ? -1 : 1;
-                if (av > bv) return sortAsc ? 1 : -1;
-                return 0;
-            });
-            return groups.flat();
-        }
+	    const valueOf = SORT_COLUMNS[sortColumn].value;
+
+	    items.sort((a, b) => {
+		const av = valueOf(a);
+		const bv = valueOf(b);
+
+		if (av < bv) return sortAsc ? -1 : 1;
+		if (av > bv) return sortAsc ? 1 : -1;
+		return 0;
+	    });
+
+    return items;
+}
 
         function previewCandidates(path) {
             const query = `path=${encodeURIComponent(path)}`;
@@ -344,20 +344,20 @@
 
         // Split items into pages of about PAGE_SIZE without ever cutting a group
         // (a video and its images) across a page boundary.
+      
         function buildPages(items) {
-            const pages = [];
-            let i = 0;
-            while (i < items.length) {
-                let end = Math.min(i + PAGE_SIZE, items.length);
-                while (end < items.length &&
-                       groupKeyOf(items[end].name || '') === groupKeyOf(items[end - 1].name || '')) {
-                    end++;
-                }
-                pages.push([i, end]);
-                i = end;
-            }
-            return pages.length ? pages : [[0, 0]];
-        }
+	    const pages = [];
+
+	    for (let i = 0; i < items.length; i += PAGE_SIZE) {
+		pages.push([
+		    i,
+		    Math.min(i + PAGE_SIZE, items.length)
+		]);
+	    }
+
+	    return pages.length ? pages : [[0, 0]];
+	} 
+      
 
         function renderPage() {
             const displayItems = sortedForDisplay();
