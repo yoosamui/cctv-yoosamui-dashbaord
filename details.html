@@ -1,0 +1,41 @@
+<!doctype html>
+<html>
+<head>
+    <meta charset="utf-8">
+    <title>Video Viewer</title>
+</head>
+<body>
+
+<button onclick="skip(-30)">⏪ -30s</button>
+<button onclick="skip(-10)">⏪ -10s</button>
+<button onclick="skip(-1)">◀ -1s</button>
+
+<video id="player" controls width="1000">
+    <source id="videoSource" src="" type="video/mp4">
+</video>
+
+<button onclick="skip(1)">▶ +1s</button>
+<button onclick="skip(10)">⏩ +10s</button>
+<button onclick="skip(30)">⏩ +30s</button>
+
+<script>
+const params = new URLSearchParams(window.location.search);
+const video = params.get("video");
+
+document.getElementById("videoSource").src = video;
+document.getElementById("player").load();
+
+function skip(seconds) {
+    const v = document.getElementById("player");
+
+    let newTime = v.currentTime + seconds;
+
+    if (newTime < 0)
+        newTime = 0;
+
+    if (newTime > v.duration)
+        newTime = v.duration;
+
+    v.currentTime = newTime;
+}
+</script>

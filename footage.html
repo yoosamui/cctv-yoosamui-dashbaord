@@ -481,7 +481,12 @@
                     <td>${escapeHtml(item.kind || '')}</td>
                     <td>${escapeHtml(item.modified || '')}</td>
                     <td>${escapeHtml(item.size || '')}</td>
-                    <td><a href="${escapeHtml(previewUrlFor(item.path || ''))}" target="_blank" rel="noreferrer">Open</a></td>
+                    <td>
+   			 <a href="details.html?video=${encodeURIComponent(previewUrlFor(item.path || ''))}"
+       				target="_blank"> Open  
+       		        </a> 
+       		   </td>
+                    
                 </tr>
             `).join('');
 
