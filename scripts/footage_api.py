@@ -11,6 +11,7 @@ from urllib.parse import parse_qs, urlparse
 STORAGE_ROOT = Path(os.environ.get("FOOTAGE_STORAGE_ROOT", "/media/share/cameras/cctv-storage"))
 HOST = "127.0.0.1"
 PORT = 8881
+MAX_DETECTION_IMAGES = 3
 
 VIDEO_EXTENSIONS = {".mp4", ".mov", ".mkv", ".avi", ".webm"}
 IMAGE_EXTENSIONS = {".jpg", ".jpeg", ".png", ".gif", ".bmp", ".webp"}
@@ -75,20 +76,50 @@ def parse_since(value: str):
     return None
 
 
+def group_key(path: Path) -> str:
+    """Key shared by a video and its detection images.
+
+    A video is named ``<timestamp>_<id>_<camera>.mp4`` and its detection
+    images ``<timestamp>_<id>_<camera>_DETECTION_<hash>_<detection-time>.jpg``,
+    so the part before ``_DETECTION`` (or the video stem) groups them together.
+    Treated purely as an opaque string — no part is parsed as a time value.
+    """
+    name = path.name
+    marker = "_DETECTION"
+    if marker in name:
+        return name.split(marker, 1)[0]
+    return path.stem
+
+
 def find_files(root: Path):
     if not root.exists():
         return []
 
-    results = []
     entries = []
     for path in root.rglob("*"):
         if path.is_file():
-            stat = path.stat()
-            entries.append((path, stat))
+            entries.append((path, path.stat()))
 
-    entries.sort(key=lambda item: item[0].name, reverse=True)
+    # Within a group, keep the video first then its detection images (by name).
+    entries.sort(key=lambda item: (0 if file_kind(item[0]) == "Video" else 1, item[0].name))
+    # Order groups by their shared timestamp_camera key, newest first. A stable
+    # sort preserves the video-first ordering established above.
+    entries.sort(key=lambda item: group_key(item[0]), reverse=True)
 
+    results = []
+    current_key = None
+    images_in_group = 0
     for path, stat in entries:
+        key = group_key(path)
+        if key != current_key:
+            current_key = key
+            images_in_group = 0
+
+        if file_kind(path) == "Image":
+            if images_in_group >= MAX_DETECTION_IMAGES:
+                continue
+            images_in_group += 1
+
         results.append({
                 "name": path.name,
                 "path": str(path),
