@@ -54,25 +54,32 @@ def parse_since(value: str):
     if not text:
         return None
 
+    # All times are interpreted in the server's local timezone so that queries
+    # match the local timestamps in the filenames (and the displayed times).
     if text == "today":
-        return datetime.now(timezone.utc)
+        return datetime.now()
+
+    def time_today(value):
+        # A time on its own means "today at that time", not the year 1900.
+        clock = datetime.strptime(value, "%H:%M")
+        return datetime.combine(datetime.now().date(), clock.time())
 
     # Accept [date] [time], [time], or [date]
     parts = text.split()
     if len(parts) == 1:
         if re.fullmatch(r"\d{4}-\d{2}-\d{2}", parts[0]):
-            return datetime.strptime(parts[0], "%Y-%m-%d").replace(tzinfo=timezone.utc)
+            return datetime.strptime(parts[0], "%Y-%m-%d")
         if re.fullmatch(r"\d{2}:\d{2}(?::\d{2})?", parts[0]):
-            return datetime.strptime(parts[0], "%H:%M").replace(tzinfo=timezone.utc)
+            return time_today(parts[0][:5])
     if len(parts) >= 2:
         if re.fullmatch(r"\d{4}-\d{2}-\d{2}", parts[0]):
             try:
-                return datetime.strptime(" ".join(parts[:2]), "%Y-%m-%d %H:%M").replace(tzinfo=timezone.utc)
+                return datetime.strptime(" ".join(parts[:2]), "%Y-%m-%d %H:%M")
             except ValueError:
                 pass
-            return datetime.strptime(parts[0], "%Y-%m-%d").replace(tzinfo=timezone.utc)
+            return datetime.strptime(parts[0], "%Y-%m-%d")
         if re.fullmatch(r"\d{2}:\d{2}(?::\d{2})?", parts[0]):
-            return datetime.strptime(parts[0], "%H:%M").replace(tzinfo=timezone.utc)
+            return time_today(parts[0][:5])
     return None
 
 
@@ -100,6 +107,11 @@ def find_files(root: Path):
         if path.is_file():
             entries.append((path, path.stat()))
 
+    # Detection images only belong under an existing video. Drop "orphan"
+    # images whose video has not been finalized yet (segment still recording),
+    # so images never appear without their video above them.
+    video_keys = {group_key(path) for path, _ in entries if file_kind(path) == "Video"}
+
     # Within a group, keep the video first then its detection images (by name).
     entries.sort(key=lambda item: (0 if file_kind(item[0]) == "Video" else 1, item[0].name))
     # Order groups by their shared timestamp_camera key, newest first. A stable
@@ -116,6 +128,8 @@ def find_files(root: Path):
             images_in_group = 0
 
         if file_kind(path) == "Image":
+            if key not in video_keys:
+                continue
             if images_in_group >= MAX_DETECTION_IMAGES:
                 continue
             images_in_group += 1
@@ -125,7 +139,7 @@ def find_files(root: Path):
                 "path": str(path),
                 "camera": path.parent.name,
                 "kind": file_kind(path),
-                "modified": datetime.fromtimestamp(stat.st_mtime, tz=timezone.utc).isoformat().replace("+00:00", "Z"),
+                "modified": datetime.fromtimestamp(stat.st_mtime).isoformat(timespec="seconds"),
                 "size": human_size(stat.st_size),
             })
     return results
@@ -137,18 +151,18 @@ def filter_results(items, since_value):
 
     filtered = []
     for item in items:
-        modified = datetime.fromisoformat(item["modified"].replace("Z", "+00:00")).astimezone(timezone.utc)
+        modified = datetime.fromisoformat(item["modified"])
         if modified >= since_value:
             filtered.append(item)
     return filtered
 
 
 def filter_today(items):
-    today = datetime.now(timezone.utc).replace(hour=0, minute=0, second=0, microsecond=0)
+    today = datetime.now().replace(hour=0, minute=0, second=0, microsecond=0)
     tomorrow = today + timedelta(days=1)
     filtered = []
     for item in items:
-        modified = datetime.fromisoformat(item["modified"].replace("Z", "+00:00")).astimezone(timezone.utc)
+        modified = datetime.fromisoformat(item["modified"])
         if today <= modified < tomorrow:
             filtered.append(item)
     return filtered
@@ -190,7 +204,7 @@ class Handler(BaseHTTPRequestHandler):
             "query": query,
             "count": len(filtered),
             "items": filtered,
-            "since": since.isoformat().replace("+00:00", "Z") if since else None,
+            "since": since.isoformat() if since else None,
         }
 
         body = json.dumps(payload, indent=2).encode("utf-8")
