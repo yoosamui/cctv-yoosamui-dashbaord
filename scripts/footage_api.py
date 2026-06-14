@@ -1,325 +1,287 @@
 #!/usr/bin/env python3
+"""
+CCTV Footage API Server v1.0.0
+"""
+
 import json
-import os
 import re
-import sys
-from datetime import datetime, timedelta, timezone
+from datetime import datetime
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
 from urllib.parse import parse_qs, urlparse
 
-STORAGE_ROOT = Path(os.environ.get("FOOTAGE_STORAGE_ROOT", "/media/share/cameras/cctv-storage"))
-HOST = "127.0.0.1"
+# ============================================
+# CONFIGURATION - CHANGE THIS IF NEEDED
+# ============================================
+STORAGE_ROOT = Path("/media/share/cameras/cctv-storage")
+HOST = "0.0.0.0"  # Listen on all network interfaces
 PORT = 8881
-MAX_DETECTION_IMAGES = 3
+MAX_ITEMS_PER_PAGE = 50
+# ============================================
 
-VIDEO_EXTENSIONS = {".mp4", ".mov", ".mkv", ".avi", ".webm"}
-IMAGE_EXTENSIONS = {".jpg", ".jpeg", ".png", ".gif", ".bmp", ".webp"}
-MIME_TYPES = {
-    ".jpg": "image/jpeg",
-    ".jpeg": "image/jpeg",
-    ".png": "image/png",
-    ".gif": "image/gif",
-    ".bmp": "image/bmp",
-    ".webp": "image/webp",
-    ".mp4": "video/mp4",
-    ".mov": "video/quicktime",
-    ".mkv": "video/x-matroska",
-    ".avi": "video/x-msvideo",
-    ".webm": "video/webm",
-}
-
-
-def human_size(size: int) -> str:
-    units = ["B", "KB", "MB", "GB", "TB"]
-    value = float(size)
-    for unit in units:
-        if value < 1024 or unit == units[-1]:
-            return f"{value:.1f} {unit}" if unit != "B" else f"{int(value)} {unit}"
-        value /= 1024
-    return f"{value:.1f} TB"
-
-
-def file_kind(path: Path) -> str:
-    suffix = path.suffix.lower()
-    if suffix in VIDEO_EXTENSIONS:
-        return "Video"
-    if suffix in IMAGE_EXTENSIONS:
-        return "Image"
-    return "File"
-
-
-def parse_since(value: str):
-    text = value.strip().lower()
-    if not text:
-        return None
-
-    # All times are interpreted in the server's local timezone so that queries
-    # match the local timestamps in the filenames (and the displayed times).
-    if text == "today":
-        return datetime.now()
-
-    def time_today(value):
-        # A time on its own means "today at that time", not the year 1900.
-        clock = datetime.strptime(value, "%H:%M")
-        return datetime.combine(datetime.now().date(), clock.time())
-
-    # Accept [date] [time], [time], or [date]
-    parts = text.split()
-    if len(parts) == 1:
-        if re.fullmatch(r"\d{4}-\d{2}-\d{2}", parts[0]):
-            return datetime.strptime(parts[0], "%Y-%m-%d")
-        if re.fullmatch(r"\d{2}:\d{2}(?::\d{2})?", parts[0]):
-            return time_today(parts[0][:5])
-    if len(parts) >= 2:
-        if re.fullmatch(r"\d{4}-\d{2}-\d{2}", parts[0]):
-            try:
-                return datetime.strptime(" ".join(parts[:2]), "%Y-%m-%d %H:%M")
-            except ValueError:
-                pass
-            return datetime.strptime(parts[0], "%Y-%m-%d")
-        if re.fullmatch(r"\d{2}:\d{2}(?::\d{2})?", parts[0]):
-            return time_today(parts[0][:5])
-    return None
-
-
-def group_key(path: Path) -> str:
-    """Key shared by a video and its detection images.
-
-    A video is named ``<timestamp>_<id>_<camera>.mp4`` and its detection
-    images ``<timestamp>_<id>_<camera>_DETECTION_<hash>_<detection-time>.jpg``,
-    so the part before ``_DETECTION`` (or the video stem) groups them together.
-    Treated purely as an opaque string — no part is parsed as a time value.
-    """
-    name = path.name
-    marker = "_DETECTION"
-    if marker in name:
-        return name.split(marker, 1)[0]
-    return path.stem
-
-
-def find_files(root: Path):
-    if not root.exists():
+def get_all_files():
+    """Get all video and image files."""
+    if not STORAGE_ROOT.exists():
+        print(f"ERROR: {STORAGE_ROOT} does not exist")
         return []
-
-    entries = []
-    for path in root.rglob("*"):
+    
+    files = []
+    count = 0
+    for path in STORAGE_ROOT.rglob("*"):
         if path.is_file():
-            entries.append((path, path.stat()))
+            name = path.name
+            suffix = path.suffix.lower()
+            
+            # Only process videos and images
+            if suffix in {'.mp4', '.mov', '.mkv', '.avi', '.webm', '.jpg', '.jpeg', '.png', '.gif', '.bmp', '.webp'}:
+                # Extract timestamp from filename
+                timestamp = None
+                match = re.search(r'(\d{4}-\d{2}-\d{2})_(\d{2}-\d{2}-\d{2})', name)
+                if match:
+                    date_str = match.group(1)
+                    time_str = match.group(2).replace('-', ':')
+                    try:
+                        timestamp = datetime.strptime(f"{date_str} {time_str}", "%Y-%m-%d %H:%M:%S")
+                    except:
+                        pass
+                
+                # Extract camera name
+                camera = "Unknown"
+                parts = name.replace('.mp4', '').replace('.jpg', '').split('_')
+                if len(parts) >= 3:
+                    camera = parts[2]
+                
+                # Determine type
+                kind = "Video" if suffix in {'.mp4', '.mov', '.mkv', '.avi', '.webm'} else "Image"
+                
+                files.append({
+                    "name": name,
+                    "path": str(path),
+                    "camera": camera,
+                    "kind": kind,
+                    "timestamp": timestamp,
+                    "size_bytes": path.stat().st_size,
+                })
+                count += 1
+                if count % 1000 == 0:
+                    print(f"Loaded {count} files...")
+    
+    # Sort by timestamp (oldest first)
+    files.sort(key=lambda x: x["timestamp"] if x["timestamp"] else datetime.min)
+    print(f"Total files loaded: {len(files)}")
+    return files
 
-    # Detection images only belong under an existing video. Drop "orphan"
-    # images whose video has not been finalized yet (segment still recording),
-    # so images never appear without their video above them.
-    video_keys = {group_key(path) for path, _ in entries if file_kind(path) == "Video"}
+# Load files at startup
+print("Loading files from storage...")
+ALL_FILES = get_all_files()
+print(f"Ready! Found {len(ALL_FILES)} files.")
 
-    # Within a group, keep the video first then its detection images (by name).
-    entries.sort(key=lambda item: (0 if file_kind(item[0]) == "Video" else 1, item[0].name))
-    # Order groups by their shared timestamp_camera key, newest first. A stable
-    # sort preserves the video-first ordering established above.
-    entries.sort(key=lambda item: group_key(item[0]), reverse=True)
+def parse_query(query: str):
+    """Parse query into (camera_name, filter1, filter2, text_search)."""
+    if not query:
+        return None, None, None, None
+    
+    original = query.strip()
+    words = original.split()
+    
+    # Check for camera name
+    camera_name = None
+    remaining = original
+    
+    available_cameras = set(f["camera"] for f in ALL_FILES)
+    camera_map = {cam.lower(): cam for cam in available_cameras}
+    
+    if words and words[0].lower() in camera_map:
+        camera_name = camera_map[words[0].lower()]
+        remaining = ' '.join(words[1:]) if len(words) > 1 else ""
+    
+    if not remaining:
+        return camera_name, None, None, None
+    
+    # Check for "today"
+    if remaining.lower() == 'today':
+        today_start = datetime.now().replace(hour=0, minute=0, second=0, microsecond=0)
+        today_end = today_start.replace(hour=23, minute=59, second=59)
+        return camera_name, today_start, today_end, None
+    
+    # Check for time only: HH:MM or HH-MM
+    time_match = re.match(r'^(\d{2})[:-](\d{2})$', remaining)
+    if not time_match:
+        time_match = re.match(r'^(\d{2})$', remaining)
+    if time_match:
+        hour = int(time_match.group(1))
+        minute = int(time_match.group(2)) if time_match.group(2) else 0
+        if 0 <= hour <= 23 and 0 <= minute <= 59:
+            return camera_name, f"{hour:02d}:{minute:02d}", None, None
+    
+    # Check for date only: YYYY-MM-DD
+    date_match = re.match(r'^(\d{4}-\d{2}-\d{2})$', remaining)
+    if date_match:
+        start_dt = datetime.strptime(remaining, "%Y-%m-%d")
+        end_dt = start_dt.replace(hour=23, minute=59, second=59)
+        return camera_name, start_dt, end_dt, None
+    
+    # Check for date + time
+    match = re.match(r'^(\d{4}-\d{2}-\d{2})[:\s-](\d{2})[:-](\d{2})$', remaining)
+    if match:
+        date_str = match.group(1)
+        hour = match.group(2)
+        minute = match.group(3)
+        start_dt = datetime.strptime(f"{date_str} {hour}:{minute}:00", "%Y-%m-%d %H:%M:%S")
+        end_dt = datetime.strptime(f"{date_str} 23:59:59", "%Y-%m-%d %H:%M:%S")
+        return camera_name, start_dt, end_dt, None
+    
+    # Everything else is text search
+    return camera_name, None, None, remaining
 
-    results = []
-    current_key = None
-    images_in_group = 0
-    for path, stat in entries:
-        key = group_key(path)
-        if key != current_key:
-            current_key = key
-            images_in_group = 0
-
-        if file_kind(path) == "Image":
-            if key not in video_keys:
-                continue
-            if images_in_group >= MAX_DETECTION_IMAGES:
-                continue
-            images_in_group += 1
-
-        results.append({
-                "name": path.name,
-                "path": str(path),
-                "camera": path.parent.name,
-                "kind": file_kind(path),
-                "modified": datetime.fromtimestamp(stat.st_mtime).isoformat(timespec="seconds"),
-                "size": human_size(stat.st_size),
-                "bytes": stat.st_size,
-            })
-    return results
-
-
-def filter_results(items, since_value):
-    if not since_value:
-        return items
-
-    filtered = []
-    for item in items:
-        modified = datetime.fromisoformat(item["modified"])
-        if modified >= since_value:
-            filtered.append(item)
-    return filtered
-
-
-def filter_today(items):
-    today = datetime.now().replace(hour=0, minute=0, second=0, microsecond=0)
-    tomorrow = today + timedelta(days=1)
-    filtered = []
-    for item in items:
-        modified = datetime.fromisoformat(item["modified"])
-        if today <= modified < tomorrow:
-            filtered.append(item)
-    return filtered
-
+def filter_files(files, camera_name, filter1, filter2, text_search):
+    """Apply all filters to files."""
+    result = files
+    
+    # Filter by camera
+    if camera_name:
+        result = [f for f in result if f["camera"].lower() == camera_name.lower()]
+    
+    # Filter by datetime range
+    if filter1 and filter2 and isinstance(filter1, datetime):
+        result = [f for f in result if f["timestamp"] and filter1 <= f["timestamp"] <= filter2]
+    
+    # Filter by time on latest date
+    elif filter1 and isinstance(filter1, str) and ":" in filter1:
+        try:
+            hour, minute = map(int, filter1.split(':'))
+            time_obj = datetime.strptime(f"{hour:02d}:{minute:02d}", "%H:%M").time()
+            
+            # Find the latest date with files at or after this time
+            latest_date = None
+            for f in result:
+                if f["timestamp"] and f["timestamp"].time() >= time_obj:
+                    if latest_date is None or f["timestamp"].date() > latest_date:
+                        latest_date = f["timestamp"].date()
+            
+            if latest_date:
+                start_dt = datetime.combine(latest_date, time_obj)
+                end_dt = datetime.combine(latest_date, datetime.max.time().replace(hour=23, minute=59, second=59))
+                result = [f for f in result if f["timestamp"] and start_dt <= f["timestamp"] <= end_dt]
+            else:
+                result = []
+        except:
+            pass
+    
+    # Filter by text search
+    if text_search:
+        needle = text_search.lower()
+        result = [f for f in result if needle in f["name"].lower()]
+    
+    # Sort by timestamp (oldest first)
+    result.sort(key=lambda x: x["timestamp"] if x["timestamp"] else datetime.min)
+    
+    return result
 
 class Handler(BaseHTTPRequestHandler):
     def do_GET(self):
         parsed = urlparse(self.path)
         params = parse_qs(parsed.query)
-
-        if parsed.path == "/api/preview":
-            self.handle_preview(parsed, params)
-            return
-
-        query = params.get("query", [""])[0].strip()
-
-        if parsed.path != "/api/footage":
+        
+        if parsed.path == "/api/footage":
+            query = params.get("query", [""])[0].strip()
+            page = int(params.get("page", ["1"])[0])
+            
+            # Parse and filter
+            camera_name, filter1, filter2, text_search = parse_query(query)
+            filtered = filter_files(ALL_FILES, camera_name, filter1, filter2, text_search)
+            
+            # Paginate
+            start = (page - 1) * MAX_ITEMS_PER_PAGE
+            end = start + MAX_ITEMS_PER_PAGE
+            paginated = filtered[start:end]
+            total_pages = (len(filtered) + MAX_ITEMS_PER_PAGE - 1) // MAX_ITEMS_PER_PAGE if filtered else 0
+            
+            # Prepare response
+            items = []
+            for f in paginated:
+                items.append({
+                    "name": f["name"],
+                    "path": f["path"],
+                    "camera": f["camera"],
+                    "kind": f["kind"],
+                    "modified": f["timestamp"].isoformat() if f["timestamp"] else "",
+                    "size": f"{f['size_bytes'] / 1024 / 1024:.1f} MB",
+                    "bytes": f["size_bytes"],
+                })
+            
+            cameras = sorted(set(f["camera"] for f in ALL_FILES))
+            
+            response = {
+                "version": "1.0.0",
+                "root": str(STORAGE_ROOT),
+                "query": query,
+                "camera_filter": camera_name,
+                "available_cameras": cameras,
+                "total_files": len(ALL_FILES),
+                "total_filtered": len(filtered),
+                "page": page,
+                "total_pages": total_pages,
+                "items_per_page": MAX_ITEMS_PER_PAGE,
+                "count": len(items),
+                "items": items,
+            }
+            
+            self.send_response(200)
+            self.send_header("Content-Type", "application/json")
+            self.send_header("Access-Control-Allow-Origin", "*")
+            self.end_headers()
+            self.wfile.write(json.dumps(response, indent=2).encode())
+            
+        elif parsed.path == "/api/preview":
+            raw_path = params.get("path", [""])[0]
+            if raw_path:
+                target = Path(raw_path)
+                if target.exists() and target.is_file():
+                    mime_type = "video/mp4" if target.suffix.lower() == '.mp4' else "image/jpeg"
+                    self.send_response(200)
+                    self.send_header("Content-Type", mime_type)
+                    self.send_header("Content-Length", str(target.stat().st_size))
+                    self.send_header("Accept-Ranges", "bytes")
+                    self.send_header("Access-Control-Allow-Origin", "*")
+                    self.end_headers()
+                    with open(target, "rb") as f:
+                        self.wfile.write(f.read())
+                    return
+            
             self.send_response(404)
             self.end_headers()
             self.wfile.write(b"Not found")
-            return
-
-        query_lower = query.strip().lower()
-        all_items = find_files(STORAGE_ROOT)
-
-        if query_lower == "today":
-            filtered = filter_today(all_items)
-            since = None
-        else:
-            since = parse_since(query)
-            filtered = filter_results(all_items, since)
-
-            if query and since is None:
-                needle = query.lower()
-                filtered = [item for item in filtered if needle in item["name"].lower() or needle in item["path"].lower()]
-
-        payload = {
-            "root": str(STORAGE_ROOT),
-            "query": query,
-            "count": len(filtered),
-            "items": filtered,
-            "since": since.isoformat() if since else None,
-        }
-
-        body = json.dumps(payload, indent=2).encode("utf-8")
-        self.send_response(200)
-        self.send_header("Content-Type", "application/json; charset=utf-8")
-        self.send_header("Content-Length", str(len(body)))
-        self.send_header("Access-Control-Allow-Origin", "*")
-        self.end_headers()
-        self.wfile.write(body)
-
-    def handle_preview(self, parsed, params):
-        raw_path = params.get("path", [""])[0]
-        if not raw_path:
-            self.send_response(400)
-            self.end_headers()
-            self.wfile.write(b"Missing path parameter")
-            return
-
-        target = Path(raw_path)
-        if not target.exists() or not target.is_file():
-            self.send_response(404)
-            self.end_headers()
-            self.wfile.write(b"File not found")
-            return
-
-        mime_type = MIME_TYPES.get(target.suffix.lower(), "application/octet-stream")
-        file_size = target.stat().st_size
-
-        # Honour HTTP range requests so the browser can seek within videos.
-        start, end = self.parse_range(self.headers.get("Range"), file_size)
-
-        if start is None:
-            # No (or unsatisfiable -> treated as full) range: send the whole file.
+            
+        elif parsed.path == "/api/version":
+            response = {"version": "1.0.0", "name": "CCTV Footage API"}
             self.send_response(200)
-            self.send_header("Content-Type", mime_type)
-            self.send_header("Content-Length", str(file_size))
-            self.send_header("Accept-Ranges", "bytes")
-            self.send_header("Cache-Control", "public, max-age=300")
+            self.send_header("Content-Type", "application/json")
             self.send_header("Access-Control-Allow-Origin", "*")
             self.end_headers()
-            self.stream_file(target, 0, file_size - 1)
-            return
-
-        length = end - start + 1
-        self.send_response(206)
-        self.send_header("Content-Type", mime_type)
-        self.send_header("Content-Length", str(length))
-        self.send_header("Content-Range", f"bytes {start}-{end}/{file_size}")
-        self.send_header("Accept-Ranges", "bytes")
-        self.send_header("Cache-Control", "public, max-age=300")
-        self.send_header("Access-Control-Allow-Origin", "*")
-        self.end_headers()
-        self.stream_file(target, start, end)
-
-    @staticmethod
-    def parse_range(header, file_size):
-        """Parse a single-range "Range: bytes=start-end" header.
-
-        Returns (start, end) inclusive byte offsets, or (None, None) when there
-        is no range to honour (no header, malformed, or unsatisfiable).
-        """
-        if not header or file_size == 0:
-            return None, None
-
-        match = re.fullmatch(r"bytes=(\d*)-(\d*)", header.strip())
-        if not match:
-            return None, None
-
-        start_raw, end_raw = match.group(1), match.group(2)
-        if start_raw == "" and end_raw == "":
-            return None, None
-
-        if start_raw == "":
-            # Suffix range: last N bytes.
-            length = int(end_raw)
-            if length == 0:
-                return None, None
-            start = max(0, file_size - length)
-            end = file_size - 1
+            self.wfile.write(json.dumps(response).encode())
         else:
-            start = int(start_raw)
-            end = int(end_raw) if end_raw != "" else file_size - 1
-
-        end = min(end, file_size - 1)
-        if start > end:
-            # Unsatisfiable; fall back to a full response.
-            return None, None
-
-        return start, end
-
-    def stream_file(self, target, start, end):
-        """Write bytes [start, end] of target to the socket in chunks."""
-        remaining = end - start + 1
-        chunk_size = 64 * 1024
-        with target.open("rb") as handle:
-            handle.seek(start)
-            while remaining > 0:
-                chunk = handle.read(min(chunk_size, remaining))
-                if not chunk:
-                    break
-                self.wfile.write(chunk)
-                remaining -= len(chunk)
-
+            self.send_response(404)
+            self.end_headers()
+            self.wfile.write(b"Not found")
+    
     def log_message(self, format, *args):
-        return
-
+        pass
 
 if __name__ == "__main__":
+    print("=" * 50)
+    print("CCTV Footage API Server v1.0.0")
+    print("=" * 50)
+    print(f"Storage: {STORAGE_ROOT}")
+    print(f"Listening: http://{HOST}:{PORT}/api/footage")
+    print(f"Total files loaded: {len(ALL_FILES)}")
+    print(f"Items per page: {MAX_ITEMS_PER_PAGE}")
+    print("=" * 50)
+    
     try:
         server = ThreadingHTTPServer((HOST, PORT), Handler)
-        print(f"Footage API listening on http://{HOST}:{PORT}/api/footage")
         server.serve_forever()
-    except KeyboardInterrupt:
-        print("\nStopping footage API...")
-    except OSError as exc:
-        print(f"Could not start footage API: {exc}", file=sys.stderr)
-        sys.exit(1)
+    except OSError as e:
+        print(f"ERROR: Cannot bind to {HOST}:{PORT}")
+        print(f"Reason: {e}")
+        print("Try changing HOST to '127.0.0.1' or check if port is already in use")

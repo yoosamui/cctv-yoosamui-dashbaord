@@ -5,44 +5,124 @@
 <title>Media Viewer</title>
 
 <style>
-body {
+* {
     margin: 0;
+    padding: 0;
+    box-sizing: border-box;
+}
+
+body {
     background: #07111f;
     color: #eff6ff;
     font-family: Arial, sans-serif;
-
+    min-height: 100vh;
     display: flex;
     justify-content: center;
-}
-
-.container {
-    width: 95%;
-    max-width: 1200px;
-    text-align: center;
+    align-items: center;
     padding: 20px;
 }
 
-video,
-img {
+.container {
     width: 100%;
-    max-height: 80vh;
+    max-width: 1400px;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+}
+
+.filename-header {
+    background: rgba(15, 23, 42, 0.95);
+    border: 1px solid rgba(56, 189, 248, 0.2);
+    border-radius: 12px;
+    padding: 12px 20px;
+    margin-bottom: 20px;
+    width: 100%;
+    text-align: center;
+    font-family: monospace;
+    font-size: 14px;
+    word-break: break-all;
+}
+
+.filename-header .label {
+    color: #60a5fa;
+    font-weight: 600;
+    margin-right: 10px;
+}
+
+.filename-header .name {
+    color: #86efac;
+}
+
+.video-wrapper {
+    width: 100%;
+    background: #000;
+    border-radius: 12px;
+    overflow: hidden;
+    display: flex;
+    justify-content: center;
+    align-items: center;
+}
+
+video {
+    width: 100%;
+    height: auto;
+    max-height: 85vh;
+    display: block;
+    background: #000;
+}
+
+img {
+    width: auto;
+    max-width: 100%;
+    max-height: 85vh;
     border-radius: 12px;
     object-fit: contain;
+    display: block;
 }
 
 .controls {
-    margin-top: 15px;
-
+    margin-top: 20px;
     display: flex;
     justify-content: center;
-    gap: 10px;
+    gap: 12px;
     flex-wrap: wrap;
 }
 
 button {
-    padding: 10px 16px;
+    padding: 10px 20px;
     border-radius: 8px;
     cursor: pointer;
+    background: rgba(56, 189, 248, 0.14);
+    border: 1px solid rgba(56, 189, 248, 0.35);
+    color: #eff6ff;
+    font-weight: 600;
+    font-size: 14px;
+    transition: all 0.2s;
+}
+
+button:hover {
+    background: rgba(56, 189, 248, 0.3);
+    transform: scale(1.02);
+}
+
+button:active {
+    transform: scale(0.98);
+}
+
+.error {
+    color: #f87171;
+    background: rgba(127, 29, 29, 0.5);
+    padding: 20px;
+    border-radius: 12px;
+    margin: 20px;
+    text-align: center;
+}
+
+.loading {
+    color: #86efac;
+    text-align: center;
+    padding: 20px;
 }
 </style>
 </head>
@@ -50,42 +130,88 @@ button {
 <body>
 
 <div class="container">
-
-    <video id="player" controls style="display:none">
-        <source id="videoSource" src="" type="video/mp4">
-    </video>
-
-    <img id="image" alt="" style="display:none">
+    <div id="filenameHeader" class="filename-header" style="display:none">
+        <span class="label">📹 File:</span>
+        <span id="filename" class="name"></span>
+    </div>
+    
+    <div id="loading" class="loading">Loading media...</div>
+    <div id="error" class="error" style="display:none"></div>
+    
+    <div class="video-wrapper">
+        <video id="player" controls style="display:none">
+            <source id="videoSource" src="" type="video/mp4">
+            Your browser does not support the video tag.
+        </video>
+        <img id="image" alt="" style="display:none">
+    </div>
 
     <div id="controls" class="controls" style="display:none">
         <button type="button" onclick="skip(-30)">⏪ -30s</button>
         <button type="button" onclick="skip(-10)">⏪ -10s</button>
         <button type="button" onclick="skip(-1)">◀ -1s</button>
-
         <button type="button" onclick="skip(1)">▶ +1s</button>
         <button type="button" onclick="skip(10)">⏩ +10s</button>
         <button type="button" onclick="skip(30)">⏩ +30s</button>
     </div>
-
 </div>
 
 <script>
 
 const IMAGE_EXTENSIONS = ["jpg", "jpeg", "png", "gif", "bmp", "webp"];
+const API_BASE = "http://192.168.1.19:8881";
 
 const params = new URLSearchParams(window.location.search);
-const media = params.get("video");
+let media = params.get("video");
 
+// Convert relative URL to absolute if needed
+if (media && media.startsWith('/api/')) {
+    media = API_BASE + media;
+    console.log("Converted to absolute URL:", media);
+}
+
+const loadingDiv = document.getElementById('loading');
+const errorDiv = document.getElementById('error');
+const filenameHeader = document.getElementById('filenameHeader');
+const filenameSpan = document.getElementById('filename');
 const player = document.getElementById("player");
 const source = document.getElementById("videoSource");
 const image = document.getElementById("image");
-const controls = document.getElementById("controls");
+const controlsDiv = document.getElementById("controls");
 
-// The media URL is the preview endpoint, e.g.
-// /api/preview?path=/storage/2026-06-12/cam/snapshot.jpg
-// Read the extension from the inner "path" param, falling back to
-// the URL itself, so we know whether to show an image or a video.
+function showError(msg) {
+    loadingDiv.style.display = 'none';
+    errorDiv.style.display = 'block';
+    errorDiv.innerHTML = msg;
+}
+
+function extractFilenameFromUrl(url) {
+    // Extract filename from the path parameter in the URL
+    try {
+        const parsed = new URL(url);
+        const pathParam = parsed.searchParams.get("path");
+        if (pathParam) {
+            // Get just the filename from the full path
+            const parts = pathParam.split('/');
+            return parts[parts.length - 1];
+        }
+    } catch (e) {
+        // If URL parsing fails, try to extract from the URL string
+        const match = url.match(/path=%2F[^&]*%2F([^&]+)/);
+        if (match) {
+            return decodeURIComponent(match[1]);
+        }
+    }
+    return "Unknown file";
+}
+
+if (!media) {
+    showError('No media file specified. Please go back and click a thumbnail again.');
+}
+
 function mediaExtension(url) {
+    if (!url) return '';
+    
     let target = url || "";
     try {
         const parsed = new URL(url, window.location.href);
@@ -97,50 +223,89 @@ function mediaExtension(url) {
     return match ? match[1].toLowerCase() : "";
 }
 
-const isImage = IMAGE_EXTENSIONS.includes(mediaExtension(media));
-
-if (isImage) {
-    image.src = media;
-    image.style.display = "";
-} else {
-    source.src = media;
-    player.load();
-    player.style.display = "";
-    controls.style.display = "";
+if (media) {
+    const ext = mediaExtension(media);
+    const isImage = IMAGE_EXTENSIONS.includes(ext);
+    
+    // Extract and display filename
+    const fileName = extractFilenameFromUrl(media);
+    filenameSpan.textContent = fileName;
+    filenameHeader.style.display = 'block';
+    
+    if (isImage) {
+        loadingDiv.style.display = 'none';
+        image.src = media;
+        image.style.display = "block";
+        image.onerror = () => {
+            showError(`Failed to load image: ${media}`);
+        };
+        image.onload = () => {
+            console.log('Image loaded successfully');
+        };
+    } else {
+        // It's a video
+        source.src = media;
+        player.load();
+        
+        // Wait for metadata to load before showing
+        player.addEventListener('loadedmetadata', () => {
+            loadingDiv.style.display = 'none';
+            player.style.display = "block";
+            controlsDiv.style.display = "flex";
+            console.log('Video loaded, duration:', player.duration);
+        });
+        
+        player.onerror = () => {
+            showError(`Failed to load video.<br><br>Make sure the API server is running and the file exists.<br><br>URL: ${media}`);
+        };
+        
+        // Timeout after 10 seconds if still loading
+        setTimeout(() => {
+            if (loadingDiv.style.display !== 'none') {
+                showError('Loading timeout. Check if the API server is responding.');
+            }
+        }, 10000);
+    }
 }
 
-player.addEventListener('seeked', () => {
-    console.log('SEEKED TO:', player.currentTime);
-});
-
-player.addEventListener('seeking', () => {
-    console.log('SEEKING TO:', player.currentTime);
-});
-
 function skip(seconds) {
-
-    console.log(
-        "BEFORE:",
-        player.currentTime,
-        player.duration
-    );
-
-    // duration is NaN until metadata loads; only clamp the
-    // upper bound when we actually know the duration.
+    if (!player) return;
+    
     let target = player.currentTime + seconds;
     target = Math.max(0, target);
     if (!isNaN(player.duration)) {
         target = Math.min(player.duration, target);
     }
     player.currentTime = target;
-
-    setTimeout(() => {
-        console.log(
-            "AFTER:",
-            player.currentTime
-        );
-    }, 500);
 }
+
+// Keyboard shortcuts
+document.addEventListener('keydown', (e) => {
+    if (player.style.display !== 'block') return;
+    
+    switch(e.key) {
+        case 'ArrowLeft':
+            e.preventDefault();
+            skip(-5);
+            break;
+        case 'ArrowRight':
+            e.preventDefault();
+            skip(5);
+            break;
+        case ' ':
+        case 'Space':
+            e.preventDefault();
+            if (player.paused) {
+                player.play();
+            } else {
+                player.pause();
+            }
+            break;
+        case 'Escape':
+            // Optional: close or go back
+            break;
+    }
+});
 
 </script>
 
